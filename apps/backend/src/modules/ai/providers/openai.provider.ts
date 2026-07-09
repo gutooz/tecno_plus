@@ -6,7 +6,7 @@ import {
   AITextRequest,
   AIVisionRequest,
 } from '@tecnoplus/shared';
-import { parseJsonLoose } from '../ai.utils';
+import { fetchImageAsBase64, parseJsonLoose } from '../ai.utils';
 
 export interface OpenAIProviderConfig {
   apiKey: string;
@@ -51,6 +51,13 @@ export class OpenAIProvider implements AIProvider {
 
   async analyzeImage<T = string>(req: AIVisionRequest): Promise<AICompletion<T>> {
     const model = req.model ?? this.config.visionModel;
+    // Converte para data URL (base64): funciona com storage local (GridFS),
+    // sem exigir que a imagem esteja num host público acessível pela OpenAI.
+    const url = req.imageUrl.startsWith('data:')
+      ? req.imageUrl
+      : await fetchImageAsBase64(req.imageUrl).then(
+          ({ base64, mediaType }) => `data:${mediaType};base64,${base64}`,
+        );
     const res = await this.client.chat.completions.create({
       model,
       max_tokens: req.maxTokens ?? 1500,
@@ -60,7 +67,7 @@ export class OpenAIProvider implements AIProvider {
           role: 'user',
           content: [
             { type: 'text', text: req.prompt },
-            { type: 'image_url', image_url: { url: req.imageUrl } },
+            { type: 'image_url', image_url: { url } },
           ],
         },
       ],

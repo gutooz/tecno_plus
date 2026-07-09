@@ -26,7 +26,6 @@
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/swagger": "^8.1.0",
     "@nestjs/throttler": "^6.3.0",
-    "@supabase/supabase-js": "^2.47.10",
     "@tecnoplus/shared": "*",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.34.5",
