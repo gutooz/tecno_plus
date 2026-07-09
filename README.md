@@ -38,7 +38,7 @@ aguardando IA.
 flowchart LR
   U[Usuário] -->|upload paralelo| FE[Frontend Next.js]
   FE -->|REST + JWT| API[Backend NestJS - API]
-  API -->|salva imagem| ST[(MongoDB GridFS)]
+  API -->|salva imagem| ST[(Supabase Storage)]
   API -->|enfileira job| Q[(Redis + BullMQ)]
   API --> DB[(MongoDB)]
   Q --> W[Worker - Pipeline de Agentes]
@@ -79,7 +79,7 @@ React Query · next-themes (dark/light) · visual inspirado no iOS com
 glassmorphism pontual.
 
 **Backend:** NestJS · TypeScript · Mongoose (MongoDB) · BullMQ (Redis) ·
-Passport JWT · Swagger · Helmet · Throttler · `sharp` · MongoDB GridFS (imagens).
+Passport JWT · Swagger · Helmet · Throttler · `sharp` · Supabase Storage.
 
 **IA:** camada `AIProvider` (adapter) com implementações OpenAI, Claude e Gemini —
 troca por variável de ambiente, sem acoplar nenhum agente a um SDK específico.
@@ -95,7 +95,7 @@ troca por variável de ambiente, sem acoplar nenhum agente a um SDK específico.
 
 ```bash
 # 1. Variáveis de ambiente
-cp .env.example .env        # edite as chaves de IA se tiver
+cp .env.example .env        # edite as chaves de IA / Supabase se tiver
 
 # 2. Dependências (monorepo)
 npm install
@@ -137,7 +137,7 @@ comece pelo **Upload**.
 │   │       │   ├── products/      # CRUD
 │   │       │   ├── uploads/       # ingestão + enqueue
 │   │       │   ├── queues/        # BullMQ + orquestrador do pipeline
-│   │       │   ├── storage/       # imagens no MongoDB (GridFS) + GET /files/:id
+│   │       │   ├── storage/       # Supabase Storage
 │   │       │   ├── publish/       # publicação
 │   │       │   ├── ops/           # dashboard, jobs, logs
 │   │       │   └── health/

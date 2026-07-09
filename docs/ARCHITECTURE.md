@@ -16,7 +16,7 @@ flowchart TB
   subgraph Infra
     DB[(MongoDB)]
     RQ[(Redis / BullMQ)]
-    ST[(MongoDB GridFS)]
+    ST[(Supabase Storage)]
   end
   subgraph External
     AI{{AIProvider: OpenAI | Claude | Gemini}}

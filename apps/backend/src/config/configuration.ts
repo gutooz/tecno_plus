@@ -6,12 +6,6 @@ export default () => ({
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.BACKEND_PORT ?? '3333', 10),
 
-  app: {
-    // URL pública da própria API (usada para montar URLs das imagens do GridFS)
-    publicUrl:
-      process.env.PUBLIC_BASE_URL ?? `http://localhost:${process.env.BACKEND_PORT ?? '3333'}`,
-  },
-
   mongo: {
     uri: process.env.MONGO_URI ?? 'mongodb://localhost:27017/tecnoplus',
     dbName: process.env.MONGO_DB_NAME ?? 'tecnoplus',
@@ -37,6 +31,12 @@ export default () => ({
     openaiKey: process.env.OPENAI_API_KEY ?? '',
     anthropicKey: process.env.ANTHROPIC_API_KEY ?? '',
     geminiKey: process.env.GEMINI_API_KEY ?? '',
+  },
+
+  supabase: {
+    url: process.env.SUPABASE_URL ?? '',
+    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'product-images',
   },
 
   pricing: {
