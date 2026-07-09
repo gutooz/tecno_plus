@@ -1,0 +1,70 @@
+# Ambiente de desenvolvimento — Tecno Plus AI Catalog
+# Uso rápido (apenas infra):  npm run infra:up
+# Uso completo (infra + apps): docker compose --profile apps up --build
+services:
+  mongo:
+    image: mongo:7
+    container_name: tecnoplus-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tecnoplus-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: tecnoplus-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/tecnoplus
+      REDIS_HOST: redis
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3333:3333"
+
+  frontend:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    container_name: tecnoplus-frontend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3333
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  mongo-data:
+  redis-data:
