@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Copy, Trash2, Pencil } from 'lucide-react';
+import { Search, Copy, Trash2, Pencil, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import { DEMO_PRODUCTS } from '@/lib/demo-data';
-import { Card, Input, StatusPill } from '@/components/ui';
+import { Button, Card, Input, StatusPill } from '@/components/ui';
 import { formatBRL, formatPercent } from '@/lib/utils';
 
 interface ProductRow {
@@ -44,6 +44,8 @@ export default function ProductsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [publishing, setPublishing] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, page],
@@ -70,6 +72,34 @@ export default function ProductsPage() {
     qc.invalidateQueries({ queryKey: ['products'] });
   }
 
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    const ids = data?.items.map((p) => p._id) ?? [];
+    setSelected((prev) => (prev.size === ids.length ? new Set() : new Set(ids)));
+  }
+
+  async function publishSelected() {
+    if (!selected.size) return;
+    setPublishing(true);
+    try {
+      const res = await api.post<{ total: number; published: number }>('/products/publish-batch', {
+        ids: [...selected],
+      });
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['products'] });
+      alert(`${res.published}/${res.total} produtos publicados.`);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       {data?.demo && (
@@ -81,19 +111,31 @@ export default function ProductsPage() {
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Produtos</h1>
-          <p className="text-sm text-muted">{data?.total ?? 0} itens no catálogo</p>
+          <p className="text-sm text-muted">
+            {selected.size > 0
+              ? `${selected.size} selecionado(s)`
+              : `${data?.total ?? 0} itens no catálogo`}
+          </p>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input
-            placeholder="Pesquisa instantânea…"
-            className="pl-9"
-            value={search}
-            onChange={(e) => {
-              setPage(1);
-              setSearch(e.target.value);
-            }}
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          {selected.size > 0 && (
+            <Button size="sm" disabled={publishing} onClick={publishSelected}>
+              <Send size={15} />
+              {publishing ? 'Publicando...' : `Publicar (${selected.size})`}
+            </Button>
+          )}
+          <div className="relative w-full max-w-xs">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <Input
+              placeholder="Pesquisa instantânea…"
+              className="pl-9"
+              value={search}
+              onChange={(e) => {
+                setPage(1);
+                setSearch(e.target.value);
+              }}
+            />
+          </div>
         </div>
       </header>
 
@@ -102,6 +144,14 @@ export default function ProductsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                <th className="w-10 p-3">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(data?.items.length) && selected.size === data?.items.length}
+                    onChange={toggleSelectAll}
+                    aria-label="Selecionar todos"
+                  />
+                </th>
                 <th className="p-3 font-medium">Produto</th>
                 <th className="p-3 font-medium">Categoria</th>
                 <th className="p-3 font-medium">Compra</th>
@@ -115,13 +165,21 @@ export default function ProductsPage() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted">
+                  <td colSpan={9} className="p-8 text-center text-muted">
                     Carregando…
                   </td>
                 </tr>
               )}
               {data?.items.map((p) => (
                 <tr key={p._id} className="border-b border-border/60 hover:bg-surface-2">
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(p._id)}
+                      onChange={() => toggleSelected(p._id)}
+                      aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
+                    />
+                  </td>
                   <td className="p-3">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-surface-2">
@@ -180,7 +238,7 @@ export default function ProductsPage() {
               ))}
               {data && data.items.length === 0 && !isLoading && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted">
+                  <td colSpan={9} className="p-8 text-center text-muted">
                     Nenhum produto. Comece pelo <b>Upload</b>.
                   </td>
                 </tr>

@@ -17,11 +17,42 @@ export class PublishService {
     private readonly publisher: PublisherAgent,
   ) {}
 
-  async publish(ownerId: string, id: string, channel = MarketplaceChannel.WEBSITE) {
+  async publish(
+    ownerId: string,
+    id: string,
+    channel: MarketplaceChannel = MarketplaceChannel.WEBSITE,
+  ) {
     const doc = await this.products.findOne({ _id: id, ownerId });
     if (!doc) throw new NotFoundException('Produto não encontrado');
     const domain = { id: String(doc._id), ...doc.toObject() } as unknown as ProductDomain;
     return this.publisher.publish(domain, channel);
+  }
+
+  /**
+   * Publica vários produtos de uma vez. Cada item é independente — uma falha
+   * não interrompe os demais (mesmo comportamento de `publish`, só em lote).
+   */
+  async publishBatch(
+    ownerId: string,
+    ids: string[],
+    channel: MarketplaceChannel = MarketplaceChannel.WEBSITE,
+  ) {
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          await this.publish(ownerId, id, channel);
+          return { id, ok: true as const };
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          return { id, ok: false as const, error };
+        }
+      }),
+    );
+    return {
+      total: results.length,
+      published: results.filter((r) => r.ok).length,
+      results,
+    };
   }
 
   channels() {

@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { ProductStatus } from '@tecnoplus/shared';
+import { MarketplaceChannel, ProductStatus } from '@tecnoplus/shared';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
 import { ProductsService } from './products.service';
@@ -65,6 +65,14 @@ export class ProductsController {
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Disposition', `attachment; filename="shopee-lote-${stamp}.xlsx"`);
     res.send(buffer);
+  }
+
+  @Post('publish-batch')
+  publishBatch(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { ids?: string[]; channel?: MarketplaceChannel },
+  ) {
+    return this.publish.publishBatch(user.id, body.ids ?? [], body.channel);
   }
 
   @Get(':id')

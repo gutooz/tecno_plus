@@ -7,7 +7,18 @@ import { TelegramApi, TgMessage, TgUpdate } from './telegram-api';
 interface PendingPhoto {
   fileId: string;
   mimeType: string;
+}
+
+interface PendingGroup {
+  photos: PendingPhoto[];
   at: number;
+}
+
+interface AlbumBuffer {
+  chatId: number;
+  photos: PendingPhoto[];
+  caption?: string;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -25,10 +36,13 @@ export class TelegramService {
   private readonly api: TelegramApi | null;
   private readonly allowed: Set<string>;
   private readonly ownerId: string;
-  private readonly pending = new Map<number, PendingPhoto>();
+  private readonly pending = new Map<number, PendingGroup>();
+  /** Fotos de um mesmo álbum (media_group_id) chegam em mensagens separadas — junta antes de processar. */
+  private readonly albumBuffers = new Map<string, AlbumBuffer>();
   private offset = 0;
   private running = false;
   private static readonly PENDING_TTL_MS = 10 * 60 * 1000;
+  private static readonly ALBUM_DEBOUNCE_MS = 1200;
 
   constructor(
     private readonly config: ConfigService,
@@ -84,10 +98,14 @@ export class TelegramService {
     const photo = this.extractPhoto(msg);
     if (photo) {
       const caption = (msg.caption ?? '').trim();
+      if (msg.media_group_id) {
+        this.bufferAlbumPhoto(chatId, msg.media_group_id, photo, caption);
+        return;
+      }
       if (caption) {
-        await this.register(chatId, photo.fileId, photo.mimeType, caption);
+        await this.registerBatch(chatId, [photo], caption);
       } else {
-        this.pending.set(chatId, { ...photo, at: Date.now() });
+        this.pending.set(chatId, { photos: [photo], at: Date.now() });
         await this.api.sendMessage(
           chatId,
           '📸 Foto recebida! Agora envie o <b>título</b> e o <b>preço pago</b>.\nEx.: <i>Copo térmico 502ml 16</i>',
@@ -107,7 +125,7 @@ export class TelegramService {
     const pend = this.pending.get(chatId);
     if (pend && Date.now() - pend.at < TelegramService.PENDING_TTL_MS) {
       this.pending.delete(chatId);
-      await this.register(chatId, pend.fileId, pend.mimeType, text);
+      await this.registerBatch(chatId, pend.photos, text);
     } else {
       this.pending.delete(chatId);
       await this.api.sendMessage(
@@ -117,7 +135,7 @@ export class TelegramService {
     }
   }
 
-  private extractPhoto(msg: TgMessage): { fileId: string; mimeType: string } | null {
+  private extractPhoto(msg: TgMessage): PendingPhoto | null {
     if (msg.photo?.length) {
       const largest = msg.photo[msg.photo.length - 1];
       return { fileId: largest.file_id, mimeType: 'image/jpeg' };
@@ -128,10 +146,50 @@ export class TelegramService {
     return null;
   }
 
-  private async register(
+  /**
+   * Fotos de um álbum chegam como mensagens separadas com o mesmo media_group_id.
+   * Junta todas (com um pequeno debounce) antes de perguntar título/preço — que
+   * vale para o álbum inteiro, aplicado a cada foto (1 foto = 1 produto).
+   */
+  private bufferAlbumPhoto(
     chatId: number,
-    fileId: string,
-    mimeType: string,
+    groupId: string,
+    photo: PendingPhoto,
+    caption: string,
+  ): void {
+    const existing = this.albumBuffers.get(groupId);
+    const buf: AlbumBuffer = existing ?? { chatId, photos: [], timer: setTimeout(() => {}, 0) };
+    clearTimeout(buf.timer);
+    buf.photos.push(photo);
+    if (caption) buf.caption = caption;
+    buf.timer = setTimeout(() => {
+      this.albumBuffers.delete(groupId);
+      void this.onAlbumReady(buf.chatId, buf.photos, buf.caption);
+    }, TelegramService.ALBUM_DEBOUNCE_MS);
+    this.albumBuffers.set(groupId, buf);
+  }
+
+  private async onAlbumReady(
+    chatId: number,
+    photos: PendingPhoto[],
+    caption?: string,
+  ): Promise<void> {
+    if (!this.api) return;
+    if (caption) {
+      await this.registerBatch(chatId, photos, caption);
+    } else {
+      this.pending.set(chatId, { photos, at: Date.now() });
+      await this.api.sendMessage(
+        chatId,
+        `📸 ${photos.length} fotos recebidas! Agora envie o <b>título</b> e o <b>preço pago</b> (vale para todas).`,
+      );
+    }
+  }
+
+  /** Extrai título/preço da legenda e cadastra 1 ou mais fotos com o mesmo título+preço. */
+  private async registerBatch(
+    chatId: number,
+    photos: PendingPhoto[],
     caption: string,
   ): Promise<void> {
     if (!this.api) return;
@@ -142,9 +200,56 @@ export class TelegramService {
       return;
     }
 
+    if (photos.length === 1) {
+      await this.registerOne(chatId, photos[0], title, price);
+      return;
+    }
+
+    let created = 0;
+    let duplicates = 0;
+    let failed = 0;
+    for (const photo of photos) {
+      try {
+        const path = await this.api.getFilePath(photo.fileId);
+        const buffer = await this.api.download(path);
+        const result = await this.uploads.ingestWithData({
+          ownerId: this.ownerId,
+          buffer,
+          mimeType: photo.mimeType,
+          name: title,
+          purchasePrice: price,
+          source: 'telegram',
+        });
+        if (result.duplicate) duplicates++;
+        else created++;
+      } catch (e) {
+        failed++;
+        this.logger.error(`ingest telegram (álbum): ${String(e)}`);
+      }
+    }
+
+    const priceTxt = price > 0 ? `R$ ${price.toFixed(2).replace('.', ',')}` : 'sem preço';
+    const parts = [`✅ <b>${created}</b> cadastrado(s)`];
+    if (duplicates) parts.push(`⚠️ ${duplicates} repetido(s) ignorado(s)`);
+    if (failed) parts.push(`❌ ${failed} falha(s)`);
+    await this.api.sendMessage(
+      chatId,
+      `${parts.join(' · ')}\n📦 ${escapeHtml(title)} (mesmo título p/ todas)\n💰 Compra: ${priceTxt}\n⏳ Processando ${photos.length} imagens e gerando os anúncios…`,
+    );
+  }
+
+  /** Cadastra uma única foto — comportamento idêntico ao fluxo original (1 foto = 1 produto). */
+  private async registerOne(
+    chatId: number,
+    photo: PendingPhoto,
+    title: string,
+    price: number,
+  ): Promise<void> {
+    if (!this.api) return;
+
     let buffer: Buffer;
     try {
-      const path = await this.api.getFilePath(fileId);
+      const path = await this.api.getFilePath(photo.fileId);
       buffer = await this.api.download(path);
     } catch (e) {
       await this.api.sendMessage(chatId, `❌ Falha ao baixar a foto: ${String(e)}`);
@@ -155,7 +260,7 @@ export class TelegramService {
       const result = await this.uploads.ingestWithData({
         ownerId: this.ownerId,
         buffer,
-        mimeType,
+        mimeType: photo.mimeType,
         name: title,
         purchasePrice: price,
         source: 'telegram',

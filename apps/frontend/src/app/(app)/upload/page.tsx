@@ -3,8 +3,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ArrowLeft,
-  ArrowRight,
   CheckCircle2,
   Download,
   FileSpreadsheet,
@@ -28,6 +26,7 @@ interface UploadedProduct extends Preview {
   internalSku?: string;
   status?: string;
   saved?: boolean;
+  saving?: boolean;
   name: string;
   purchasePrice: string;
   salePrice: string;
@@ -36,16 +35,14 @@ interface UploadedProduct extends Preview {
 export default function UploadPage() {
   const [previews, setPreviews] = useState<Preview[]>([]);
   const [products, setProducts] = useState<UploadedProduct[]>([]);
-  const [active, setActive] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingAll, setSavingAll] = useState(false);
   const [exporting, setExporting] = useState(false);
   const startRef = useRef<number>(0);
   const [eta, setEta] = useState('');
 
-  const current = products[active];
   const completed = products.filter((p) => p.saved).length;
   const canExport = products.length > 0 && completed === products.length;
 
@@ -65,10 +62,14 @@ export default function UploadPage() {
     addFiles(e.dataTransfer.files);
   }
 
-  function updateCurrent(field: 'name' | 'purchasePrice' | 'salePrice', value: string) {
+  function updateProduct(
+    index: number,
+    field: 'name' | 'purchasePrice' | 'salePrice',
+    value: string,
+  ) {
     setProducts((prev) =>
-      prev.map((product, index) =>
-        index === active ? { ...product, [field]: value, saved: false } : product,
+      prev.map((product, i) =>
+        i === index ? { ...product, [field]: value, saved: false } : product,
       ),
     );
   }
@@ -107,22 +108,25 @@ export default function UploadPage() {
 
       setProducts(uploaded);
       setPreviews([]);
-      setActive(0);
     } finally {
       setUploading(false);
       setEta('');
     }
   }
 
-  async function saveCurrent(goNext = false) {
-    if (!current) return;
-    setSaving(true);
-    try {
-      const purchasePrice = Number(current.purchasePrice.replace(',', '.'));
-      const salePrice = Number(current.salePrice.replace(',', '.'));
+  /** Salva nome/preço de UM produto e dispara o pipeline. Usada tanto pelo
+   * botão por linha quanto pelo "Salvar todos" (lote). */
+  async function saveProduct(index: number): Promise<boolean> {
+    const product = products[index];
+    if (!product || !product.name.trim()) return false;
 
-      await api.put(`/products/${current.id}`, {
-        'vision.name': current.name,
+    setProducts((prev) => prev.map((p, i) => (i === index ? { ...p, saving: true } : p)));
+    try {
+      const purchasePrice = Number(product.purchasePrice.replace(',', '.'));
+      const salePrice = Number(product.salePrice.replace(',', '.'));
+
+      await api.put(`/products/${product.id}`, {
+        'vision.name': product.name,
         'vision.labelPrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
         'pricing.purchasePrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
         'pricing.suggestedPrice': Number.isFinite(salePrice) ? salePrice : 0,
@@ -143,14 +147,29 @@ export default function UploadPage() {
             ? (salePrice - purchasePrice) / purchasePrice
             : 0,
       });
-      await api.post(`/products/${current.id}/process`);
+      await api.post(`/products/${product.id}/process`);
 
       setProducts((prev) =>
-        prev.map((product, index) => (index === active ? { ...product, saved: true } : product)),
+        prev.map((p, i) => (i === index ? { ...p, saved: true, saving: false } : p)),
       );
-      if (goNext && active < products.length - 1) setActive((value) => value + 1);
+      return true;
+    } catch {
+      setProducts((prev) => prev.map((p, i) => (i === index ? { ...p, saving: false } : p)));
+      return false;
+    }
+  }
+
+  /** Salva todos os produtos preenchidos (e ainda não salvos) de uma vez — é o
+   * ponto central do "envio em lote": preencher a tabela inteira e confirmar 1x. */
+  async function saveAll() {
+    const pending = products.map((p, i) => ({ p, i })).filter(({ p }) => !p.saved && p.name.trim());
+    if (!pending.length) return;
+
+    setSavingAll(true);
+    try {
+      await Promise.all(pending.map(({ i }) => saveProduct(i)));
     } finally {
-      setSaving(false);
+      setSavingAll(false);
     }
   }
 
@@ -170,6 +189,8 @@ export default function UploadPage() {
       setExporting(false);
     }
   }
+
+  const fillableCount = products.filter((p) => p.name.trim() && !p.saved).length;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -291,120 +312,109 @@ export default function UploadPage() {
         </>
       )}
 
-      {current && (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="overflow-hidden rounded-2xl border border-border bg-surface">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={active === 0}
-                onClick={() => setActive((value) => value - 1)}
-              >
-                <ArrowLeft size={16} />
-                Anterior
-              </Button>
-              <p className="text-sm text-muted">
-                Foto {active + 1} de {products.length}
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={active >= products.length - 1}
-                onClick={() => setActive((value) => value + 1)}
-              >
-                Proxima
-                <ArrowRight size={16} />
-              </Button>
+      {products.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted">
+              Preencha nome e preço de cada produto — depois salve tudo de uma vez.
+            </p>
+            <Button disabled={savingAll || !fillableCount} onClick={saveAll}>
+              <Save size={16} />
+              {savingAll ? 'Salvando...' : `Salvar todos (${fillableCount})`}
+            </Button>
+          </div>
+
+          <Card className="overflow-hidden p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                    <th className="p-3 font-medium">Foto</th>
+                    <th className="p-3 font-medium">Nome do produto</th>
+                    <th className="p-3 font-medium">Preço pago</th>
+                    <th className="p-3 font-medium">Preço de venda</th>
+                    <th className="w-24 p-3 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product, index) => (
+                    <tr key={product.id} className="border-b border-border/60 last:border-0">
+                      <td className="p-3">
+                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={product.url} alt="" className="h-full w-full object-cover" />
+                        </div>
+                      </td>
+                      <td className="min-w-48 p-3">
+                        <Input
+                          value={product.name}
+                          onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                          placeholder="Ex: Carregador USB-C 20W"
+                        />
+                      </td>
+                      <td className="min-w-32 p-3">
+                        <Input
+                          inputMode="decimal"
+                          value={product.purchasePrice}
+                          onChange={(e) => updateProduct(index, 'purchasePrice', e.target.value)}
+                          placeholder="18,50"
+                        />
+                      </td>
+                      <td className="min-w-32 p-3">
+                        <Input
+                          inputMode="decimal"
+                          value={product.salePrice}
+                          onChange={(e) => updateProduct(index, 'salePrice', e.target.value)}
+                          placeholder="39,90"
+                        />
+                      </td>
+                      <td className="p-3">
+                        {product.saved ? (
+                          <span className="flex items-center gap-1.5 text-success">
+                            <CheckCircle2 size={16} />
+                            Salvo
+                          </span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={product.saving || !product.name.trim()}
+                            onClick={() => saveProduct(index)}
+                          >
+                            {product.saving ? '...' : 'Salvar'}
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="grid place-items-center bg-surface-2 p-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={current.url}
-                alt=""
-                className="max-h-[68vh] w-full max-w-3xl rounded-lg object-contain"
+          </Card>
+
+          <Card className="rounded-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-medium">Progresso</p>
+              <p className="text-sm text-muted">
+                {completed}/{products.length}
+              </p>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className="h-full bg-success transition-all"
+                style={{ width: `${products.length ? (completed / products.length) * 100 : 0}%` }}
               />
             </div>
-          </section>
-
-          <aside className="space-y-4">
-            <Card className="rounded-2xl">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold">Dados do produto</h2>
-                  <p className="text-xs text-muted">{current.internalSku}</p>
-                </div>
-                {current.saved && <CheckCircle2 className="text-success" size={20} />}
-              </div>
-
-              <div className="space-y-3">
-                <label className="block text-sm">
-                  <span className="mb-1 block text-muted">Nome do produto</span>
-                  <Input
-                    value={current.name}
-                    onChange={(e) => updateCurrent('name', e.target.value)}
-                    placeholder="Ex: Carregador USB-C 20W"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-muted">Preco pago</span>
-                  <Input
-                    inputMode="decimal"
-                    value={current.purchasePrice}
-                    onChange={(e) => updateCurrent('purchasePrice', e.target.value)}
-                    placeholder="Ex: 18,50"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-muted">Preco de venda</span>
-                  <Input
-                    inputMode="decimal"
-                    value={current.salePrice}
-                    onChange={(e) => updateCurrent('salePrice', e.target.value)}
-                    placeholder="Ex: 39,90"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-5 grid gap-2">
-                <Button disabled={saving || !current.name.trim()} onClick={() => saveCurrent(true)}>
-                  <Save size={16} />
-                  {saving ? 'Salvando...' : 'Salvar e proxima'}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={saving || !current.name.trim()}
-                  onClick={() => saveCurrent(false)}
-                >
-                  Salvar
-                </Button>
-              </div>
-            </Card>
-
-            <Card className="rounded-2xl">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-medium">Progresso</p>
-                <p className="text-sm text-muted">
-                  {completed}/{products.length}
-                </p>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-                <div
-                  className="h-full bg-success transition-all"
-                  style={{ width: `${products.length ? (completed / products.length) * 100 : 0}%` }}
-                />
-              </div>
-              <Button
-                variant="outline"
-                className="mt-4 w-full"
-                disabled={!canExport || exporting}
-                onClick={exportShopee}
-              >
-                <Download size={16} />
-                {exporting ? 'Gerando...' : 'Exportar lote Shopee'}
-              </Button>
-            </Card>
-          </aside>
+            <Button
+              variant="outline"
+              className="mt-4 w-full"
+              disabled={!canExport || exporting}
+              onClick={exportShopee}
+            >
+              <Download size={16} />
+              {exporting ? 'Gerando...' : 'Exportar lote Shopee'}
+            </Button>
+          </Card>
         </div>
       )}
     </div>

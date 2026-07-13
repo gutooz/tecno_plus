@@ -19,6 +19,8 @@ export interface TgMessage {
   caption?: string;
   photo?: TgPhotoSize[];
   document?: { file_id: string; mime_type?: string; file_name?: string };
+  /** Presente quando a foto faz parte de um álbum (várias fotos numa mensagem só). */
+  media_group_id?: string;
 }
 
 export interface TgUpdate {
