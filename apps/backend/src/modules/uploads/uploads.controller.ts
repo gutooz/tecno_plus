@@ -1,4 +1,4 @@
-import { Controller, Post, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Post, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -26,14 +26,23 @@ export class UploadsController {
   @Post()
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FilesInterceptor('files', 1000))
-  async upload(@CurrentUser() user: AuthUser, @UploadedFiles() files: MulterFile[]) {
+  async upload(
+    @CurrentUser() user: AuthUser,
+    @UploadedFiles() files: MulterFile[],
+    @Body('deferPipeline') deferPipeline?: string,
+  ) {
+    const startPipeline = deferPipeline !== 'true';
     const results = await Promise.all(
       (files ?? []).map((f) =>
-        this.uploads.ingest(user.id, {
-          buffer: f.buffer,
-          originalName: f.originalname,
-          mimeType: f.mimetype,
-        }),
+        this.uploads.ingest(
+          user.id,
+          {
+            buffer: f.buffer,
+            originalName: f.originalname,
+            mimeType: f.mimetype,
+          },
+          startPipeline,
+        ),
       ),
     );
     return { received: results.length, products: results };

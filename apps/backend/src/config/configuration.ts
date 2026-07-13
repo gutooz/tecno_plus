@@ -4,7 +4,8 @@
  */
 export default () => ({
   env: process.env.NODE_ENV ?? 'development',
-  port: parseInt(process.env.BACKEND_PORT ?? '3333', 10),
+  // Render/Heroku injetam PORT dinamicamente; localmente usamos BACKEND_PORT
+  port: parseInt(process.env.PORT ?? process.env.BACKEND_PORT ?? '3333', 10),
 
   mongo: {
     uri: process.env.MONGO_URI ?? 'mongodb://localhost:27017/tecnoplus',
@@ -15,6 +16,8 @@ export default () => ({
     host: process.env.REDIS_HOST ?? 'localhost',
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
     password: process.env.REDIS_PASSWORD || undefined,
+    // Redis gerenciado (ex.: Upstash) exige TLS
+    tls: process.env.REDIS_TLS === 'true',
   },
 
   jwt: {
@@ -25,12 +28,28 @@ export default () => ({
   },
 
   ai: {
-    provider: process.env.AI_PROVIDER ?? 'openai',
-    visionModel: process.env.AI_VISION_MODEL ?? 'gpt-4o',
-    textModel: process.env.AI_TEXT_MODEL ?? 'gpt-4o-mini',
+    // Provedor padrão; pode ser sobrescrito por capacidade abaixo.
+    provider: process.env.AI_PROVIDER ?? 'gemini',
+    // Gemini trata/lê as IMAGENS; Claude escreve os TÍTULOS/descrições.
+    visionProvider: process.env.AI_VISION_PROVIDER ?? process.env.AI_PROVIDER ?? 'gemini',
+    textProvider: process.env.AI_TEXT_PROVIDER ?? process.env.AI_PROVIDER ?? 'claude',
+    visionModel: process.env.AI_VISION_MODEL ?? 'gemini-flash-latest',
+    textModel: process.env.AI_TEXT_MODEL ?? 'claude-haiku-4-5',
     openaiKey: process.env.OPENAI_API_KEY ?? '',
     anthropicKey: process.env.ANTHROPIC_API_KEY ?? '',
     geminiKey: process.env.GEMINI_API_KEY ?? '',
+  },
+
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+    // IDs autorizados a cadastrar (o resto é ignorado).
+    allowedChatIds: (process.env.TELEGRAM_CHAT_ID ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    // Catálogo compartilhado: todos os cadastros do bot caem sob este dono
+    // (assim a dedup vale para o time inteiro, sem produto repetido).
+    ownerId: process.env.TELEGRAM_OWNER_ID ?? 'bras',
   },
 
   supabase: {

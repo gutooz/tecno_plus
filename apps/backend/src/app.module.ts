@@ -12,6 +12,7 @@ import { AgentsModule } from './agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
 import { PublishModule } from './modules/publish/publish.module';
 import { OpsModule } from './modules/ops/ops.module';
 import { HealthModule } from './modules/health/health.module';
@@ -49,6 +50,7 @@ import { HealthModule } from './modules/health/health.module';
     AuthModule,
     ProductsModule,
     UploadsModule,
+    TelegramModule,
     PublishModule,
     OpsModule,
     HealthModule,

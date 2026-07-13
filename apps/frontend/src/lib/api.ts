@@ -43,14 +43,31 @@ export const api = {
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 
+  async download(path: string): Promise<Blob> {
+    const token = getToken();
+    const headers = new Headers();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const res = await fetch(`${BASE}/api${path}`, { headers });
+    if (!res.ok) {
+      const message = await res.text().catch(() => res.statusText);
+      throw new Error(`API ${res.status}: ${message}`);
+    }
+    return res.blob();
+  },
+
   /** Upload de múltiplos arquivos com progresso via XHR. */
   upload(
     files: File[],
     onProgress?: (pct: number) => void,
-  ): Promise<{ received: number; products: { id: string }[] }> {
+    options?: { deferPipeline?: boolean },
+  ): Promise<{
+    received: number;
+    products: { id: string; internalSku: string; status: string }[];
+  }> {
     return new Promise((resolve, reject) => {
       const form = new FormData();
       files.forEach((f) => form.append('files', f));
+      if (options?.deferPipeline) form.append('deferPipeline', 'true');
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${BASE}/api/upload`);
       const token = getToken();

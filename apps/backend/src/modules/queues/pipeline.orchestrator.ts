@@ -51,13 +51,25 @@ export class PipelineOrchestrator {
       if (!originalUrl) throw new Error('Produto sem imagem original.');
 
       const out = await this.vision.run(originalUrl);
-      const needsReview = out.confidence < PipelineOrchestrator.REVIEW_THRESHOLD;
+
+      // Preserva TÍTULO e PREÇO informados pelo operador (fluxo Telegram):
+      // a visão enriquece marca/categoria, mas não sobrescreve o que o humano deu.
+      const existing = (product.vision ?? {}) as { name?: string; labelPrice?: number };
+      const hasUserTitle = Boolean(existing.name);
+      const mergedVision = {
+        ...out.attributes,
+        name: existing.name || out.attributes.name,
+        labelPrice: existing.labelPrice ?? out.attributes.labelPrice,
+      };
+
+      // Com título humano, não barra por foto difícil — confiamos no operador.
+      const needsReview = !hasUserTitle && out.confidence < PipelineOrchestrator.REVIEW_THRESHOLD;
 
       await this.products.updateOne(
         { _id: data.productId },
         {
           $set: {
-            vision: out.attributes,
+            vision: mergedVision,
             aiConfidence: out.confidence,
             multipleProductsDetected: out.multipleProductsDetected,
             status: needsReview ? ProductStatus.NEEDS_REVIEW : ProductStatus.PROCESSING,

@@ -1,5 +1,18 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  Param,
+  Post,
+  Put,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { ProductStatus } from '@tecnoplus/shared';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
@@ -37,6 +50,23 @@ export class ProductsController {
     });
   }
 
+  @Get('export/shopee')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportShopee(
+    @CurrentUser() user: AuthUser,
+    @Res() res: Response,
+    @Query('ids') ids?: string,
+  ) {
+    const selectedIds = ids
+      ?.split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const buffer = await this.products.exportShopee(user.id, selectedIds);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Disposition', `attachment; filename="shopee-lote-${stamp}.xlsx"`);
+    res.send(buffer);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.products.findById(user.id, id);
@@ -54,6 +84,11 @@ export class ProductsController {
   @Post(':id/duplicate')
   duplicate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.products.duplicate(user.id, id);
+  }
+
+  @Post(':id/process')
+  process(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.products.startPipeline(user.id, id);
   }
 
   @Delete(':id')

@@ -7,6 +7,8 @@ export function buildRedisOptions(config: ConfigService): RedisOptions {
     host: config.get<string>('redis.host'),
     port: config.get<number>('redis.port'),
     password: config.get<string>('redis.password') || undefined,
+    // Upstash e outros Redis gerenciados exigem TLS (REDIS_TLS=true)
+    tls: config.get<boolean>('redis.tls') ? {} : undefined,
     maxRetriesPerRequest: null, // exigido pelo BullMQ
   };
 }

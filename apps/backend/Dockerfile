@@ -27,5 +27,8 @@ COPY --from=build /app/shared/package.json ./shared/
 COPY --from=build /app/apps/backend/dist ./apps/backend/dist
 COPY --from=build /app/apps/backend/package.json ./apps/backend/
 EXPOSE 3333
-# Sobe API e worker no mesmo container (dev). Em produção, separe em 2 serviços.
-CMD ["sh", "-c", "node apps/backend/dist/worker.js & node apps/backend/dist/main.js"]
+# Sobe API, worker e bot do Telegram no mesmo container — assim um único Web
+# Service (com HTTP para keep-alive) mantém os três processos vivos, sem
+# precisar de um Background Worker pago à parte. Se qualquer processo cair,
+# `wait -n` encerra o container inteiro para a plataforma reiniciar os três.
+CMD ["sh", "-c", "node apps/backend/dist/main.js & node apps/backend/dist/worker.js & node apps/backend/dist/telegram.js & wait -n"]

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Copy, Trash2, Pencil } from 'lucide-react';
 import { api } from '@/lib/api';
+import { DEMO_PRODUCTS } from '@/lib/demo-data';
 import { Card, Input, StatusPill } from '@/components/ui';
 import { formatBRL, formatPercent } from '@/lib/utils';
 
@@ -24,6 +25,19 @@ interface ListResponse {
   total: number;
   page: number;
   pages: number;
+  demo?: boolean;
+}
+
+function demoResponse(search: string): ListResponse {
+  const q = search.trim().toLowerCase();
+  const items = (DEMO_PRODUCTS as ProductRow[]).filter(
+    (p) =>
+      !q ||
+      p.vision?.name?.toLowerCase().includes(q) ||
+      p.vision?.brand?.toLowerCase().includes(q) ||
+      p.internalSku?.toLowerCase().includes(q),
+  );
+  return { items, total: items.length, page: 1, pages: 1, demo: true };
 }
 
 export default function ProductsPage() {
@@ -33,8 +47,16 @@ export default function ProductsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, page],
-    queryFn: () =>
-      api.get<ListResponse>(`/products?search=${encodeURIComponent(search)}&page=${page}&limit=20`),
+    queryFn: async () => {
+      try {
+        return await api.get<ListResponse>(
+          `/products?search=${encodeURIComponent(search)}&page=${page}&limit=20`,
+        );
+      } catch {
+        // Backend/MongoDB fora do ar → mostra o lote de demonstração (produtos reais do Brás)
+        return demoResponse(search);
+      }
+    },
     refetchInterval: 8000,
   });
 
@@ -50,6 +72,12 @@ export default function ProductsPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      {data?.demo && (
+        <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-warning">
+          Modo demonstração (offline) — exibindo os 11 produtos do lote Brás. Suba o backend +
+          MongoDB para dados ao vivo.
+        </div>
+      )}
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Produtos</h1>

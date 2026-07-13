@@ -1,0 +1,248 @@
+{
+  "batch": "bras-2026-07-09",
+  "note": "Extração feita a partir de 29 fotos. Agrupadas em 11 produtos (produto + etiqueta de preço + verso).",
+  "currency": "BRL",
+  "products": [
+    {
+      "ref": "AMIGOLD-IMPERIAL-CLEAR-320",
+      "status": "ready",
+      "aiConfidence": 0.9,
+      "images": ["10.50.14 (produto)"],
+      "vision": {
+        "name": "Jogo de Copo Imperial Clear",
+        "brand": "Amigold",
+        "category": "Utilidades Domésticas",
+        "subcategory": "Copos",
+        "quantity": 6,
+        "size": "320 ml",
+        "material": "Vidro",
+        "features": ["6 unidades", "320 ml", "Linha Imperial", "Modelo Clear"],
+        "ean": null,
+        "labelPrice": null
+      }
+    },
+    {
+      "ref": "BLK2241",
+      "status": "ready",
+      "aiConfidence": 0.85,
+      "images": ["10.50.42 (produto)", "10.50.47 (etiqueta)"],
+      "vision": {
+        "name": "Kit de Facas de Cozinha 3 Peças",
+        "brand": "Sokemvleez",
+        "category": "Cozinha",
+        "subcategory": "Facas / Cutelaria",
+        "color": "Preto",
+        "quantity": 3,
+        "features": ["2 facas + 1 tesoura", "Cabo emborrachado", "Lâmina antiaderente"],
+        "sku": "BLK2241",
+        "ean": null,
+        "labelPrice": 17.0,
+        "priceTiers": { "1-2un": 17.0, "3-5un": 16.0, "6+un": 14.0 }
+      }
+    },
+    {
+      "ref": "Y888-REF1009",
+      "status": "ready",
+      "aiConfidence": 0.97,
+      "images": ["10.51.00 (produto)", "10.51.04 (verso c/ EAN)", "10.51.12 (etiqueta)"],
+      "vision": {
+        "name": "Kit de Facas 3 Peças (cabos coloridos)",
+        "brand": "Y888",
+        "supplier": "Y888 Importação e Exportação de Artigos de Bazar Ltda",
+        "category": "Cozinha",
+        "subcategory": "Facas / Cutelaria",
+        "quantity": 3,
+        "material": "Aço inox",
+        "color": "Roxo / Verde / Rosa",
+        "ean": "7908153066184",
+        "sku": "1009",
+        "packageText": "Mantenha fora do alcance de crianças. País de origem: China. CNPJ 08.678.467/0001-05",
+        "labelPrice": 10.0,
+        "priceTiers": { "unico": 10.0 }
+      }
+    },
+    {
+      "ref": "CO0544541",
+      "status": "ready",
+      "aiConfidence": 0.9,
+      "images": ["10.51.23 (produto)", "10.51.28 (etiqueta)"],
+      "vision": {
+        "name": "Faca para Churrasco Jumbo Wooden 5\" - Jogo 3 Peças",
+        "brand": "Fratelli Inox",
+        "category": "Cozinha",
+        "subcategory": "Facas / Churrasco",
+        "quantity": 3,
+        "size": "5 polegadas",
+        "material": "Aço inox, cabo de madeira",
+        "features": ["Linha Wooden", "Cabo de madeira rebitado", "Lâmina serrilhada"],
+        "sku": "CO0544541",
+        "ean": null,
+        "labelPrice": 25.0,
+        "priceTiers": { "1-2un": 25.0, "3-5un": 23.0, "6+un": 21.0 }
+      }
+    },
+    {
+      "ref": "TP853",
+      "status": "ready",
+      "aiConfidence": 0.88,
+      "images": ["10.51.45 (produto)", "10.51.50 (etiqueta)"],
+      "vision": {
+        "name": "Kit de Faca 2 Peças (faca + tesoura)",
+        "brand": "Top Casa",
+        "category": "Cozinha",
+        "subcategory": "Facas / Cutelaria",
+        "color": "Preto",
+        "quantity": 2,
+        "features": ["Faca + tesoura", "Selo 100% Premium"],
+        "sku": "TP853",
+        "ean": null,
+        "labelPrice": 18.0,
+        "priceTiers": { "unico": 18.0 }
+      }
+    },
+    {
+      "ref": "BLK9001",
+      "status": "ready",
+      "aiConfidence": 0.88,
+      "images": [
+        "10.52.53 (prateleira/multiplos)",
+        "10.53.00 (produto azul)",
+        "10.53.05 (etiqueta)",
+        "10.53.12 (caixa)"
+      ],
+      "vision": {
+        "name": "Copo Térmico Beer Pints 502ml (sem logo, estilo Stanley)",
+        "brand": "The Stay Chill",
+        "category": "Utilidades Domésticas",
+        "subcategory": "Copos / Térmicos",
+        "size": "502 ml",
+        "material": "Aço inox 18/8, parede dupla a vácuo",
+        "color": "Vários (vermelho, azul, rosa, laranja, etc.)",
+        "features": [
+          "Aço inox 18/8 BPA-free",
+          "Parede dupla vacuum",
+          "Tampa 3 posições",
+          "Canudo reutilizável",
+          "Lava-louças"
+        ],
+        "sku": "BLK9001",
+        "ean": null,
+        "multipleProductsDetected": true,
+        "labelPrice": 16.0,
+        "priceTiers": { "1-2un": 16.0, "3-5un": 15.0, "6+un": 14.0 }
+      }
+    },
+    {
+      "ref": "CGT4053",
+      "status": "ready",
+      "aiConfidence": 0.85,
+      "images": [
+        "10.53.24 (produto verde)",
+        "10.53.40 (caixa roxo)",
+        "10.53.46 (caixa verso)",
+        "10.54.00 (etiqueta)"
+      ],
+      "vision": {
+        "name": "Copo Automotivo 40oz/1200ml - Pintura Diamantada (glitter, c/ alça, estilo Stanley)",
+        "brand": null,
+        "category": "Utilidades Domésticas",
+        "subcategory": "Copos / Térmicos",
+        "size": "40 oz / 1200 ml",
+        "material": "Aço inox",
+        "color": "Glitter (verde, roxo, etc.)",
+        "features": ["Alça", "Tampa com canudo", "Acabamento diamantado/glitter"],
+        "sku": "CGT4053",
+        "ean": null,
+        "labelPrice": 42.0,
+        "priceTiers": { "unico": 42.0 }
+      }
+    },
+    {
+      "ref": "STITCH-1711",
+      "status": "needs_review",
+      "aiConfidence": 0.6,
+      "reviewReason": "Personagem licenciado (Stitch/Disney) - checar direitos antes de publicar/usar imagem de marca.",
+      "images": ["10.54.18 (produto)", "10.54.22 (etiqueta)"],
+      "vision": {
+        "name": "Garrafa Retro Stitch 500ml",
+        "brand": "Stitch (Disney - licenciado)",
+        "category": "Utilidades Domésticas",
+        "subcategory": "Garrafas",
+        "size": "500 ml",
+        "material": "Plástico",
+        "color": "Transparente / lilás",
+        "sku": "1711",
+        "ean": null,
+        "labelPrice": 10.0,
+        "priceTiers": { "1-2un": 10.0, "3-5un": 9.0, "6+un": 9.0 }
+      }
+    },
+    {
+      "ref": "GDR1001",
+      "status": "ready",
+      "aiConfidence": 0.9,
+      "images": [
+        "10.54.39 (caixa 450ml)",
+        "10.54.47 (produto + verso c/ EAN parcial)",
+        "10.54.51 (etiqueta)"
+      ],
+      "vision": {
+        "name": "Copo Inox Bottle 450ml (tampa astronauta, adesivos 3D)",
+        "brand": "The Stay Chill",
+        "supplier": "Golden Rio Importação",
+        "category": "Utilidades Domésticas",
+        "subcategory": "Copos / Térmicos",
+        "size": "450 ml",
+        "material": "Aço inox 18/8, parede dupla a vácuo",
+        "color": "Gradiente roxo/rosa",
+        "features": ["Tampa com boneco astronauta", "Adesivos 3D", "Canudo de inox", "BPA-free"],
+        "sku": "GDR1001",
+        "ean": "790804xxxxxxx (parcial - refotografar verso)",
+        "labelPrice": 25.0,
+        "priceTiers": { "1-2un": 25.0, "3-5un": 23.0, "6+un": 21.0 }
+      }
+    },
+    {
+      "ref": "IOD00049",
+      "status": "needs_review",
+      "aiConfidence": 0.45,
+      "reviewReason": "Só temos a etiqueta de preço; falta foto do produto correspondente.",
+      "images": ["10.55.08 (etiqueta)"],
+      "vision": {
+        "name": "Garrafa de Água Portátil 650ml",
+        "category": "Utilidades Domésticas",
+        "subcategory": "Garrafas",
+        "size": "650 ml",
+        "sku": "IOD00049",
+        "ean": null,
+        "labelPrice": 33.0,
+        "priceTiers": { "unico": 33.0 }
+      }
+    },
+    {
+      "ref": "FUNING-789-650",
+      "status": "ready",
+      "aiConfidence": 0.92,
+      "images": [
+        "10.55.02 (produto branco)",
+        "10.55.14 (caixa)",
+        "10.55.19 (verso certificado)",
+        "10.55.26 (caixa aberta - 4 cores)"
+      ],
+      "vision": {
+        "name": "Garrafa Térmica 650ml \"Fun Supply Chain\" (formato bolinha, alça) - Surprise Box",
+        "brand": "Funing / Fun Supply Chain",
+        "category": "Utilidades Domésticas",
+        "subcategory": "Garrafas / Térmicas",
+        "size": "650 ml",
+        "material": "Aço inoxidável austenítico 304 (norma GB4806.9-2023); tampa PP; canudo ABS; anéis silicone",
+        "color": "Sortido (surprise box - 4 variantes)",
+        "features": ["Alça", "Tampa com bico", "Isolamento a vácuo", "Caixa surpresa"],
+        "sku": "789",
+        "ean": null,
+        "labelPrice": null,
+        "multipleProductsDetected": true
+      }
+    }
+  ]
+}
