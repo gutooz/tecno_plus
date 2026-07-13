@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { PipelineJobData, QueueName } from '@tecnoplus/shared';
-import { QUEUES_MAP } from './queues.module';
+import { QUEUES_MAP } from './queues.tokens';
 
 export interface QueueStats {
   queue: QueueName;

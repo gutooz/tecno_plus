@@ -4,11 +4,7 @@ import { Queue } from 'bullmq';
 import { DEFAULT_JOB_OPTIONS, QueueName } from '@tecnoplus/shared';
 import { buildRedisOptions } from './redis.connection';
 import { QueueService } from './queue.service';
-
-/** Token de injeção por fila: QUEUE_<NOME>. */
-export const QUEUE_TOKENS = Object.fromEntries(
-  Object.values(QueueName).map((name) => [name, Symbol(`QUEUE_${name}`)]),
-) as Record<QueueName, symbol>;
+import { QUEUE_TOKENS, QUEUES_MAP } from './queues.tokens';
 
 const queueProviders = Object.values(QueueName).map((name) => ({
   provide: QUEUE_TOKENS[name],
@@ -19,9 +15,6 @@ const queueProviders = Object.values(QueueName).map((name) => ({
       defaultJobOptions: DEFAULT_JOB_OPTIONS,
     }),
 }));
-
-/** Token de um Map<QueueName, Queue> agregado, consumido pelo QueueService. */
-export const QUEUES_MAP = Symbol('QUEUES_MAP');
 
 const queuesMapProvider = {
   provide: QUEUES_MAP,
