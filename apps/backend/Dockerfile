@@ -33,4 +33,4 @@ EXPOSE 3333
 # Service (com HTTP para keep-alive) mantém os três processos vivos, sem
 # precisar de um Background Worker pago à parte. Se qualquer processo cair,
 # `wait -n` encerra o container inteiro para a plataforma reiniciar os três.
-CMD ["sh", "-c", "node apps/backend/dist/main.js & node apps/backend/dist/worker.js & node apps/backend/dist/telegram.js & wait -n"]
+CMD ["bash", "-c", "node apps/backend/dist/main.js & node apps/backend/dist/worker.js & node apps/backend/dist/telegram.js & wait -n"]
