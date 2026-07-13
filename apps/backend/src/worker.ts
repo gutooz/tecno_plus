@@ -32,8 +32,11 @@ async function bootstrap() {
 
   const workers = Object.entries(handlers).map(([queue, handler]) => {
     const worker = new Worker(queue, async (job: Job<PipelineJobData>) => handler(job.data), {
+      // Concorrência baixa: reduz a pressão de conexões simultâneas no Redis
+      // gerenciado (Upstash free tier), que já mostrou instabilidade intermitente
+      // sob carga concorrente alta.
       connection,
-      concurrency: 4,
+      concurrency: 2,
     });
     worker.on('failed', (job, err) => {
       logger.error(`[${queue}] job ${job?.id} falhou: ${err.message}`);

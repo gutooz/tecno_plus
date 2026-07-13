@@ -1,18 +1,19 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   UploadCloud,
+  Layers,
   Package,
   Settings,
   Moon,
   Sun,
   LogOut,
-  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { clearToken } from '@/lib/api';
@@ -20,6 +21,7 @@ import { clearToken } from '@/lib/api';
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/upload', label: 'Upload', icon: UploadCloud },
+  { href: '/lote', label: 'Envio em Lote', icon: Layers },
   { href: '/products', label: 'Produtos', icon: Package },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];
@@ -33,8 +35,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       <aside className="glass sticky top-0 hidden h-screen w-64 flex-col gap-1 p-4 md:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-fg">
-            <Sparkles size={18} />
+          <div className="h-9 w-9 overflow-hidden rounded-xl shadow-soft">
+            <Image
+              src="/logo.jpg"
+              alt="Tecno Plus"
+              width={36}
+              height={36}
+              className="h-full w-full object-cover"
+            />
           </div>
           <div className="leading-tight">
             <p className="text-sm font-semibold">Tecno Plus</p>

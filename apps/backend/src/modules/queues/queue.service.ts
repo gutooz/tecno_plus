@@ -24,7 +24,8 @@ export class QueueService {
   async enqueue(queue: QueueName, data: PipelineJobData): Promise<void> {
     const q = this.queues.get(queue);
     if (!q) throw new Error(`Fila desconhecida: ${queue}`);
-    await q.add(queue, { ...data, from: queue }, { jobId: `${queue}:${data.productId}` });
+    // BullMQ usa ":" como separador interno de chave no Redis — jobId customizado não pode conter ":".
+    await q.add(queue, { ...data, from: queue }, { jobId: `${queue}-${data.productId}` });
   }
 
   /** Ponto de entrada do pipeline: começa pela visão. */
