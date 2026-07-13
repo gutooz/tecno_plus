@@ -1,9 +1,10 @@
-# Deploy 24h grátis — Render + Vercel
+# Deploy 24h grátis — tudo no Render
 
-Este guia coloca o projeto no ar de graça e disponível de qualquer lugar:
+Este guia coloca o projeto no ar de graça e disponível de qualquer lugar,
+usando só o Render (backend e frontend como dois Web Services separados):
 
-- **Frontend (Next.js)** → Vercel
-- **Backend (API + worker de filas + bot do Telegram)** → Render (Web Service, free tier)
+- **Frontend (Next.js)** → Render (Web Service, free tier, `apps/frontend/Dockerfile`)
+- **Backend (API + worker de filas + bot do Telegram)** → Render (Web Service, free tier, `apps/backend/Dockerfile`)
 - **MongoDB** → Atlas (free tier M0)
 - **Redis (BullMQ)** → Upstash (free tier)
 - **Storage de imagens** → Supabase Storage (já usado no projeto)
@@ -67,28 +68,34 @@ imagem — ok só para teste rápido).
 5. Deploy. Ao subir, teste `https://<seu-servico>.onrender.com/api/health`
    — deve responder `{"status":"ok", ...}`.
 
-## 5. Frontend na Vercel
+## 5. Frontend no Render
 
-1. vercel.com → **Add New > Project** → importe o repositório.
-2. **Root Directory**: `apps/frontend`.
-3. **Environment Variables**:
+1. render.com → **New > Web Service** → conecte o mesmo repositório.
+2. **Runtime**: Docker. **Dockerfile Path**: `apps/frontend/Dockerfile`.
+   **Docker Build Context**: raiz do repo (`.`).
+3. **Instance Type**: Free.
+4. **Environment Variables**:
    ```
-   NEXT_PUBLIC_API_URL=https://<seu-servico>.onrender.com
+   NEXT_PUBLIC_API_URL=https://<nome-do-backend>.onrender.com
    ```
-4. Deploy. Depois, volte no Render e atualize `CORS_ORIGIN` com a URL final
-   da Vercel (ex.: `https://seu-app.vercel.app`), e faça redeploy do backend.
+5. Deploy. Depois, volte no Web Service do **backend** e atualize
+   `CORS_ORIGIN` com a URL final do frontend (ex.:
+   `https://<nome-do-frontend>.onrender.com`), e faça redeploy do backend.
 
-## 6. Cron de keep-alive (mantém o Render acordado 24h)
+## 6. Cron de keep-alive (mantém os dois serviços acordados 24h)
 
-Use um serviço gratuito de cron HTTP para pingar a cada 10 minutos:
+Cada Web Service free do Render dorme sozinho após ~15 min sem tráfego —
+então cada um precisa do seu próprio ping. Use um cron HTTP gratuito:
 
-- **cron-job.org** (mais simples): crie uma conta, adicione um cron job
-  `GET https://<seu-servico>.onrender.com/api/health`, intervalo de 10 min.
+- **cron-job.org** (mais simples): crie uma conta e adicione dois cron
+  jobs, um por serviço, intervalo de 10 min:
+  - `GET https://<nome-do-backend>.onrender.com/api/health`
+  - `GET https://<nome-do-frontend>.onrender.com/` (qualquer rota responde)
 - Alternativa: um workflow do GitHub Actions agendado (`schedule: cron`)
-  que faz `curl` nesse mesmo endpoint a cada 10 min.
+  que faz `curl` nas duas URLs a cada 10 min.
 
-Isso é suficiente: o serviço nunca fica 15 min sem tráfego, então o
-container nunca dorme — e API, worker e bot continuam rodando dentro dele.
+Isso é suficiente: nenhum dos dois fica 15 min sem tráfego, então nenhum
+container dorme — e no backend, API, worker e bot continuam rodando juntos.
 
 ## 7. Telegram bot em produção
 
@@ -102,6 +109,6 @@ bot começa a responder normalmente — sem passo extra.
 - [ ] Upstash: `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS=true`
 - [ ] Supabase Storage configurado (ou aceitar modo no-op)
 - [ ] Backend deployado no Render (Docker, free tier) com todas as env vars
-- [ ] `CORS_ORIGIN` do backend apontando para a URL da Vercel
-- [ ] Frontend deployado na Vercel com `NEXT_PUBLIC_API_URL` apontando pro Render
-- [ ] Cron de keep-alive pingando `/api/health` a cada 10 min
+- [ ] Frontend deployado no Render (Docker, free tier) com `NEXT_PUBLIC_API_URL`
+- [ ] `CORS_ORIGIN` do backend apontando para a URL do frontend no Render
+- [ ] Cron de keep-alive pingando os dois serviços a cada 10 min
