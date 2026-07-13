@@ -1,7 +1,9 @@
 # Backend (NestJS) — build a partir da raiz do monorepo
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
-ENV NODE_ENV=production
+# NODE_ENV=production só é setado no estágio "runner" (fim do arquivo) — se
+# setado aqui, o `npm install` abaixo pula devDependencies (typescript,
+# @nestjs/cli) e o build quebra com "tsc: not found".
 
 # Copia manifests para cache de dependências
 COPY package.json package-lock.json* ./
