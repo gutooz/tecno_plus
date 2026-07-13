@@ -1,5 +1,7 @@
 # Backend (NestJS) — build a partir da raiz do monorepo
-FROM node:20-bookworm-slim AS base
+# Node 22+ é exigido pelo @supabase/supabase-js (realtime-js usa o WebSocket
+# nativo do Node, só disponível a partir da v22).
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
 # NODE_ENV=production só é setado no estágio "runner" (fim do arquivo) — se
 # setado aqui, o `npm install` abaixo pula devDependencies (typescript,
@@ -20,7 +22,7 @@ COPY apps/backend ./apps/backend
 RUN npm run build --workspace shared \
   && npm run build --workspace @tecnoplus/backend
 
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules

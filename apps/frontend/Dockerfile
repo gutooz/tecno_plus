@@ -1,5 +1,5 @@
 # Frontend (Next.js 15) — build a partir da raiz do monorepo
-FROM node:20-bookworm-slim AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
