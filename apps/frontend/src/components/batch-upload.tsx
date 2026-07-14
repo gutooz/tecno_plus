@@ -312,7 +312,60 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             </Button>
           </div>
 
-          <Card className="overflow-hidden p-0">
+          {/* Mobile: cada pendente vira um card empilhado — sem scroll lateral */}
+          <div className="space-y-3 md:hidden">
+            {pending.map((product) => (
+              <Card key={product.id} className="space-y-3 p-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.url} alt="" className="h-full w-full object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      value={product.name}
+                      onChange={(e) => updateField(product.id, 'name', e.target.value)}
+                      placeholder="Nome do produto"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-muted">Preço pago</span>
+                    <Input
+                      inputMode="decimal"
+                      value={product.purchasePrice}
+                      onChange={(e) => updateField(product.id, 'purchasePrice', e.target.value)}
+                      placeholder="18,50"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-muted">
+                      Preço de venda
+                    </span>
+                    <Input
+                      inputMode="decimal"
+                      value={product.salePrice}
+                      onChange={(e) => updateField(product.id, 'salePrice', e.target.value)}
+                      placeholder="39,90"
+                    />
+                  </label>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  loading={product.saving}
+                  disabled={!product.name.trim()}
+                  onClick={() => saveOne(product.id)}
+                >
+                  {product.saving ? 'Salvando…' : 'Salvar'}
+                </Button>
+              </Card>
+            ))}
+          </div>
+
+          {/* Desktop/tablet: tabela */}
+          <Card className="hidden overflow-hidden p-0 md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
