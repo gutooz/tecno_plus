@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import ExcelJS from 'exceljs';
 import { FilterQuery, Model } from 'mongoose';
 import { ProductStatus } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { QueueService } from '../queues/queue.service';
+import { exportShopeeWorkbook, SourceProduct } from './shopee';
 
 export interface ListProductsQuery {
   ownerId: string;
@@ -29,6 +29,8 @@ function setDeep(obj: Record<string, unknown>, path: string[], value: unknown): 
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
     @InjectModel(Product.name) private readonly model: Model<ProductDocument>,
     private readonly queue: QueueService,
@@ -137,88 +139,29 @@ export class ProductsService {
     return rows.reduce<Record<string, number>>((acc, r) => ((acc[r._id] = r.count), acc), {});
   }
 
-  async exportShopee(ownerId: string, ids?: string[]) {
+  /**
+   * Gera a planilha de Importação em Massa da Shopee (BR) a partir do catálogo.
+   * A montagem/validação vive no motor modular `./shopee` (template → mapper →
+   * autofix → validador → workbook). Aqui só buscamos os produtos e delegamos.
+   *
+   * Regra nº 1: nunca inventar colunas. O layout vem do arquivo oficial
+   * (SHOPEE_TEMPLATE_PATH) quando disponível, ou do esquema de referência BR.
+   */
+  async exportShopee(ownerId: string, ids?: string[]): Promise<Buffer> {
     const filter: FilterQuery<ProductDocument> = { ownerId };
     if (ids?.length) filter._id = { $in: ids };
 
-    const products = await this.model.find(filter).sort({ createdAt: -1 }).lean();
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Tecno Plus';
-    workbook.created = new Date();
+    const products = (await this.model
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .lean()) as unknown as SourceProduct[];
 
-    const sheet = workbook.addWorksheet('Shopee');
-    sheet.columns = [
-      { header: 'Nome do Produto', key: 'name', width: 42 },
-      { header: 'Descricao do Produto', key: 'description', width: 62 },
-      { header: 'Categoria', key: 'category', width: 24 },
-      { header: 'SKU', key: 'sku', width: 22 },
-      { header: 'Preco', key: 'price', width: 14 },
-      { header: 'Estoque', key: 'stock', width: 12 },
-      { header: 'Imagem Principal', key: 'image1', width: 62 },
-      { header: 'Imagem HD', key: 'image2', width: 62 },
-      { header: 'Imagem Original', key: 'image3', width: 62 },
-      { header: 'Preco de Custo', key: 'purchasePrice', width: 16 },
-      { header: 'Lucro Estimado', key: 'profit', width: 16 },
-      { header: 'Observacoes', key: 'notes', width: 34 },
-    ];
-
-    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    sheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFEE4D2D' },
-    };
-
-    for (const product of products) {
-      const vision = (product.vision ?? {}) as Record<string, unknown>;
-      const content = (product.content ?? {}) as Record<string, unknown>;
-      const pricing = (product.pricing ?? {}) as Record<string, unknown>;
-      const images = (product.images ?? {}) as Record<string, unknown>;
-
-      const title = String(content.title ?? vision.name ?? product.internalSku);
-      const description = String(
-        content.marketplaceDescription ?? content.description ?? vision.shortDescription ?? title,
-      );
-      const salePrice = Number(pricing.suggestedPrice ?? 0);
-      const purchasePrice = Number(pricing.purchasePrice ?? 0);
-      // Prioriza as 3 imagens Shopee (produto recortado em fundo limpo); se ainda
-      // não existirem, cai nas variantes antigas.
-      const shopee = Array.isArray(images.shopee) ? (images.shopee as string[]) : [];
-
-      sheet.addRow({
-        name: title.slice(0, 120),
-        description,
-        category: String(content.category ?? vision.category ?? ''),
-        sku: product.internalSku,
-        price: salePrice || '',
-        stock: 1,
-        image1: String(shopee[0] ?? images.square ?? images.hd ?? images.original ?? ''),
-        image2: String(shopee[1] ?? images.hd ?? images.webp ?? ''),
-        image3: String(shopee[2] ?? images.original ?? ''),
-        purchasePrice: purchasePrice || '',
-        profit: salePrice && purchasePrice ? salePrice - purchasePrice : '',
-        notes: product.status === ProductStatus.READY ? 'Pronto para revisar' : product.status,
-      });
-    }
-
-    sheet.eachRow((row) => {
-      row.eachCell((cell) => {
-        cell.alignment = { vertical: 'top', wrapText: true };
-      });
-    });
-
-    workbook
-      .addWorksheet('Leia-me')
-      .addRows([
-        ['Como usar'],
-        [
-          'A Shopee altera campos por categoria e pais. Baixe o template atual no Seller Center e copie estes dados para as colunas equivalentes.',
-        ],
-        [
-          'As imagens usadas aqui priorizam a foto quadrada tratada, depois HD, depois original. Para upload em lote, as URLs precisam ser publicas.',
-        ],
-      ]);
-
-    return Buffer.from(await workbook.xlsx.writeBuffer());
+    const { buffer, report } = await exportShopeeWorkbook(products);
+    this.logger.log(
+      `Export Shopee: ${report.totalProducts} produto(s) → ${report.totalRows} linha(s) | ` +
+        `template=${report.templateSource} | ${report.corrections} correção(ões) | ` +
+        `${report.errors} erro(s), ${report.warnings} aviso(s) | ${report.rejected} rejeitado(s).`,
+    );
+    return buffer;
   }
 }
