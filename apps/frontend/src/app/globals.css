@@ -2,65 +2,181 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design tokens — Tecno Plus. Inspirado em Apple HIG / iOS / Linear / Stripe.
+ * Cores em canais RGB (space-separated) para funcionar com <alpha-value> do
+ * Tailwind. Paleta enxuta: muito branco, cinza elegante, um azul sóbrio.
+ */
 :root {
-  --bg: 244 245 247;
+  /* Superfícies — do fundo para o topo */
+  --bg: 246 247 249;
   --surface: 255 255 255;
-  --surface-2: 248 249 251;
-  --border: 226 228 233;
-  --fg: 17 20 24;
-  --muted: 110 118 129;
-  --primary: 10 132 255; /* iOS blue */
+  --surface-2: 245 246 249;
+  --surface-3: 239 241 245;
+  --border: 228 230 235;
+  --border-strong: 214 217 224;
+
+  /* Texto */
+  --fg: 18 21 26;
+  --muted: 101 109 122;
+  --faint: 148 155 166;
+
+  /* Marca — azul sóbrio (levemente mais profundo que o iOS puro) */
+  --primary: 10 124 245;
   --primary-fg: 255 255 255;
-  --success: 52 199 89;
-  --warning: 255 159 10;
-  --danger: 255 69 58;
+  --ring: 10 124 245;
+
+  /* Estados */
+  --success: 34 176 99;
+  --warning: 234 155 20;
+  --danger: 233 66 61;
+
+  /* Sombras (camadas suaves) — usadas via utilidades do Tailwind */
+  --shadow-color: 17 24 39;
 }
 
 .dark {
-  --bg: 10 12 16;
-  --surface: 22 25 31;
-  --surface-2: 28 32 39;
-  --border: 42 47 56;
-  --fg: 237 240 244;
-  --muted: 148 156 167;
-  --primary: 10 132 255;
+  --bg: 11 13 16;
+  --surface: 23 25 30;
+  --surface-2: 30 33 39;
+  --surface-3: 37 41 48;
+  --border: 40 44 52;
+  --border-strong: 55 60 70;
+
+  --fg: 237 240 245;
+  --muted: 151 159 171;
+  --faint: 108 116 128;
+
+  --primary: 40 145 255;
   --primary-fg: 255 255 255;
-  --success: 48 209 88;
-  --warning: 255 179 64;
+  --ring: 40 145 255;
+
+  --success: 48 200 108;
+  --warning: 245 176 65;
   --danger: 255 105 97;
+
+  --shadow-color: 0 0 0;
 }
 
-* {
-  border-color: rgb(var(--border));
+@layer base {
+  * {
+    border-color: rgb(var(--border));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: rgb(var(--bg));
+    color: rgb(var(--fg));
+    font-family:
+      var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+      'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'cv01', 'cv03', 'ss01';
+    letter-spacing: -0.011em;
+  }
+
+  ::selection {
+    background: rgb(var(--primary) / 0.18);
+  }
+
+  /* Anel de foco padrão (Apple-like): suave, generoso, apenas via teclado */
+  :focus-visible {
+    outline: none;
+  }
 }
 
-body {
-  background: rgb(var(--bg));
-  color: rgb(var(--fg));
-  -webkit-font-smoothing: antialiased;
-  font-feature-settings: 'cv02', 'cv03', 'cv04';
+@layer components {
+  /* Superfície de vidro — usar só sobre fundos com interesse visual */
+  .glass {
+    background: rgb(var(--surface) / 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgb(var(--border) / 0.7);
+  }
+
+  /* Card padrão — superfície sólida com elevação de repouso sutil */
+  .card {
+    background: rgb(var(--surface));
+    border: 1px solid rgb(var(--border));
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 2px rgb(var(--shadow-color) / 0.04),
+      0 4px 14px rgb(var(--shadow-color) / 0.05);
+  }
+
+  /* Divisórias hairline finas */
+  .hairline {
+    border-color: rgb(var(--border) / 0.7);
+  }
 }
 
-/* Superfície de vidro — usar com moderação, só onde faz sentido */
-.glass {
-  background: rgb(var(--surface) / 0.7);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border: 1px solid rgb(var(--border) / 0.6);
+@layer utilities {
+  /* Numerais tabulares para tabelas/KPIs */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  /* Base do skeleton shimmer */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: rgb(var(--surface-3));
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--fg) / 0.06),
+      transparent
+    );
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
 }
 
-.card {
-  background: rgb(var(--surface));
-  border: 1px solid rgb(var(--border));
-  border-radius: 1.25rem;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-}
-
+/* Scrollbar discreta */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--border));
+  background: rgb(var(--border-strong) / 0.7);
   border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--faint) / 0.7);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Respeita quem prefere menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

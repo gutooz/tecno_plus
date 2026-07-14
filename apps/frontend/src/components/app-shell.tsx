@@ -14,11 +14,19 @@ import {
   Moon,
   Sun,
   LogOut,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { clearToken } from '@/lib/api';
+import { IconButton } from '@/components/ui';
 
-const NAV = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/upload', label: 'Upload', icon: UploadCloud },
   { href: '/lote', label: 'Envio em Lote', icon: Layers },
@@ -26,10 +34,35 @@ const NAV = [
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];
 
+function Brand({ size = 'md' }: { size?: 'sm' | 'md' }) {
+  const dim = size === 'sm' ? 32 : 38;
+  return (
+    <div className="flex items-center gap-2.5">
+      <div
+        className="overflow-hidden rounded-2xl shadow-soft ring-1 ring-border/60"
+        style={{ height: dim, width: dim }}
+      >
+        <Image
+          src="/logo.jpg"
+          alt="Tecno Plus"
+          width={dim}
+          height={dim}
+          className="h-full w-full object-cover"
+        />
+      </div>
+      <div className="leading-tight">
+        <p className="text-sm font-semibold tracking-tight">Tecno Plus</p>
+        {size === 'md' && <p className="text-[11px] font-medium text-faint">AI Catalog</p>}
+      </div>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
 
   const logout = () => {
     clearToken();
@@ -38,122 +71,114 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      {/* Topo mobile: logo + tema + sair (a sidebar fica escondida abaixo de md) */}
-      <header className="glass sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-border px-4 py-3 md:hidden">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 overflow-hidden rounded-lg shadow-soft">
-            <Image
-              src="/logo.jpg"
-              alt="Tecno Plus"
-              width={32}
-              height={32}
-              className="h-full w-full object-cover"
-            />
-          </div>
-          <p className="text-sm font-semibold">Tecno Plus</p>
-        </div>
+      {/* Topo mobile */}
+      <header className="glass sticky top-0 z-30 flex items-center justify-between gap-2 px-4 py-3 md:hidden">
+        <Brand size="sm" />
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="flex h-9 w-9 items-center justify-center rounded-xl hover:bg-surface-2"
+          <IconButton
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
             aria-label="Alternar tema"
           >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <button
-            onClick={logout}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
-            aria-label="Sair"
-          >
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          </IconButton>
+          <IconButton onClick={logout} tone="danger" aria-label="Sair">
             <LogOut size={18} />
-          </button>
+          </IconButton>
         </div>
       </header>
 
       {/* Sidebar desktop/tablet */}
-      <aside className="glass sticky top-0 hidden h-screen w-64 flex-col gap-1 p-4 md:flex">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="h-9 w-9 overflow-hidden rounded-xl shadow-soft">
-            <Image
-              src="/logo.jpg"
-              alt="Tecno Plus"
-              width={36}
-              height={36}
-              className="h-full w-full object-cover"
-            />
-          </div>
-          <div className="leading-tight">
-            <p className="text-sm font-semibold">Tecno Plus</p>
-            <p className="text-xs text-muted">AI Catalog</p>
-          </div>
+      <aside className="glass sticky top-0 hidden h-screen w-64 flex-col gap-1 border-r border-border/70 p-4 md:flex">
+        <div className="mb-7 px-2 pt-1">
+          <Brand />
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1">
+        <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-faint">
+          Menu
+        </p>
+        <nav className="flex flex-1 flex-col gap-0.5">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href);
             return (
               <Link
                 key={href}
                 href={href}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition',
+                  'group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors duration-200 ease-out-soft',
                   active ? 'text-primary' : 'text-muted hover:bg-surface-2 hover:text-fg',
                 )}
               >
                 {active && (
                   <motion.span
                     layoutId="nav-active-desktop"
-                    className="absolute inset-0 rounded-xl bg-primary/10"
-                    transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                    className="absolute inset-0 rounded-2xl bg-primary/10 ring-1 ring-inset ring-primary/15"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                   />
                 )}
-                <Icon size={18} className="relative z-10" />
+                <Icon
+                  size={18}
+                  className={cn(
+                    'relative z-10 transition-transform duration-200 ease-out-soft',
+                    !active && 'group-hover:scale-110',
+                  )}
+                />
                 <span className="relative z-10 font-medium">{label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="flex h-9 w-9 items-center justify-center rounded-xl hover:bg-surface-2"
-            aria-label="Alternar tema"
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-2xl border border-border/70 bg-surface-2/60 p-1.5">
           <button
             onClick={logout}
-            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-fg"
+            className="flex flex-1 items-center gap-2 rounded-xl px-2.5 py-2 text-sm font-medium text-muted transition-colors duration-200 ease-out-soft hover:bg-surface hover:text-danger"
           >
             <LogOut size={16} /> Sair
           </button>
+          <IconButton
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            aria-label="Alternar tema"
+          >
+            {isDark ? <Sun size={17} /> : <Moon size={17} />}
+          </IconButton>
         </div>
       </aside>
 
-      <main className="flex-1 px-4 py-5 pb-24 md:px-8 md:py-8 md:pb-8">{children}</main>
+      {/* Conteúdo — transição suave a cada navegação */}
+      <main className="flex-1 px-4 py-5 pb-24 md:px-8 md:py-8 md:pb-8">
+        <motion.div
+          key={pathname}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {children}
+        </motion.div>
+      </main>
 
       {/* Nav inferior mobile */}
-      <nav className="glass fixed inset-x-0 bottom-0 z-20 flex items-stretch justify-around border-t border-border pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav className="glass fixed inset-x-0 bottom-0 z-30 flex items-stretch justify-around pb-[env(safe-area-inset-bottom)] md:hidden">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
+              aria-current={active ? 'page' : undefined}
               className={cn(
-                'relative flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[10px] transition',
+                'relative flex flex-1 flex-col items-center gap-1 px-1 pb-2 pt-2.5 text-[10px] transition-colors duration-200',
                 active ? 'text-primary' : 'text-muted',
               )}
             >
               {active && (
                 <motion.span
                   layoutId="nav-active-mobile"
-                  className="absolute inset-x-2 top-0.5 h-0.5 rounded-full bg-primary"
-                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                  className="absolute inset-x-5 top-0 h-0.5 rounded-full bg-primary"
+                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                 />
               )}
-              <Icon size={19} />
+              <Icon size={19} className={cn(active && 'scale-105')} />
               <span className="truncate font-medium leading-none">{label}</span>
             </Link>
           );

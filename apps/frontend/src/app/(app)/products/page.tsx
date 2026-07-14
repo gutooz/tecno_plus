@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Copy, Trash2, Pencil, Send, Download, Plus } from 'lucide-react';
+import { Search, Copy, Trash2, Pencil, Send, Download, Plus, PackageOpen } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button, Card, Input, StatusPill } from '@/components/ui';
+import { Button, Card, Checkbox, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
+import { PageHeader } from '@/components/page-header';
 import { formatBRL, formatPercent } from '@/lib/utils';
 
 interface ProductRow {
@@ -108,65 +109,72 @@ export default function ProductsPage() {
     }
   }
 
+  const allChecked = Boolean(data?.items.length) && selected.size === data?.items.length;
+  const isEmpty = data && data.items.length === 0 && !isLoading;
+
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Produtos</h1>
-          <p className="text-sm text-muted">
-            {selected.size > 0
-              ? `${selected.size} selecionado(s)`
-              : `${data?.total ?? 0} itens no catálogo`}
-          </p>
+      <PageHeader
+        title="Produtos"
+        subtitle={
+          selected.size > 0
+            ? `${selected.size} selecionado(s)`
+            : `${data?.total ?? 0} itens no catálogo`
+        }
+      >
+        <div className="relative w-full max-w-xs sm:w-64">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+          <Input
+            placeholder="Pesquisa instantânea…"
+            className="pl-9"
+            value={search}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
+          />
         </div>
-        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
-          {selected.size > 0 && (
-            <>
-              <Button variant="outline" size="sm" disabled={exporting} onClick={exportSelected}>
-                <Download size={15} />
-                {exporting ? 'Gerando...' : `Excel (${selected.size})`}
-              </Button>
-              <Button size="sm" disabled={publishing} onClick={publishSelected}>
-                <Send size={15} />
-                {publishing ? 'Publicando...' : `Publicar (${selected.size})`}
-              </Button>
-            </>
-          )}
-          <Link href="/lote" className="shrink-0">
-            <Button size="sm" variant="outline">
-              <Plus size={15} />
-              Novo produto
+        <Link href="/lote" className="shrink-0">
+          <Button size="sm" variant="outline">
+            <Plus size={15} />
+            Novo produto
+          </Button>
+        </Link>
+      </PageHeader>
+
+      {/* Barra de ações contextual — aparece ao selecionar */}
+      {selected.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2.5 rounded-2xl border border-primary/20 bg-primary/[0.06] px-4 py-2.5 animate-fade-in">
+          <span className="text-sm font-medium text-primary">{selected.size} selecionado(s)</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="sm" loading={exporting} onClick={exportSelected}>
+              {!exporting && <Download size={15} />}
+              {exporting ? 'Gerando…' : `Excel (${selected.size})`}
             </Button>
-          </Link>
-          <div className="relative w-full max-w-xs">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <Input
-              placeholder="Pesquisa instantânea…"
-              className="pl-9"
-              value={search}
-              onChange={(e) => {
-                setPage(1);
-                setSearch(e.target.value);
-              }}
-            />
+            <Button size="sm" loading={publishing} onClick={publishSelected}>
+              {!publishing && <Send size={15} />}
+              {publishing ? 'Publicando…' : `Publicar (${selected.size})`}
+            </Button>
           </div>
         </div>
-      </header>
+      )}
 
-      {/* Mobile: lista em cards — uma tabela de 9 colunas não cabe numa tela de celular */}
-      <div className="space-y-2 md:hidden">
-        {isLoading && <p className="p-6 text-center text-sm text-muted">Carregando…</p>}
+      {/* Mobile: lista em cards */}
+      <div className="space-y-2.5 md:hidden">
+        {isLoading &&
+          Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-3xl" />
+          ))}
         {data?.items.map((p) => (
-          <Card key={p._id} className="p-3">
+          <Card key={p._id} className="p-3.5">
             <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                className="mt-1.5 shrink-0"
+              <Checkbox
+                className="mt-1"
                 checked={selected.has(p._id)}
                 onChange={() => toggleSelected(p._id)}
                 aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
               />
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60">
                 {(p.images?.thumbnail || p.images?.original) && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -186,148 +194,148 @@ export default function ProductsPage() {
                   </div>
                   <StatusPill status={p.status} />
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                <div className="nums mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                   <span className="text-muted">
                     Compra <b className="text-fg">{formatBRL(p.pricing?.purchasePrice)}</b>
                   </span>
                   <span className="text-muted">
                     Venda <b className="text-fg">{formatBRL(p.pricing?.suggestedPrice)}</b>
                   </span>
-                  <span className="text-success">{formatPercent(p.pricing?.marginPercent)}</span>
+                  <span className="font-medium text-success">
+                    {formatPercent(p.pricing?.marginPercent)}
+                  </span>
                 </div>
-                <div className="mt-2 flex items-center gap-1">
-                  <Link
-                    href={`/products/${p._id}`}
-                    className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-fg"
-                  >
-                    <Pencil size={15} />
+                <div className="mt-2.5 flex items-center gap-1">
+                  <Link href={`/products/${p._id}`} aria-label="Editar">
+                    <IconButton size="sm">
+                      <Pencil size={15} />
+                    </IconButton>
                   </Link>
-                  <button
-                    onClick={() => duplicate(p._id)}
-                    className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-fg"
-                  >
+                  <IconButton size="sm" onClick={() => duplicate(p._id)} aria-label="Duplicar">
                     <Copy size={15} />
-                  </button>
-                  <button
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    tone="danger"
                     onClick={() => remove(p._id)}
-                    className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-danger"
+                    aria-label="Excluir"
                   >
                     <Trash2 size={15} />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
             </div>
           </Card>
         ))}
-        {data && data.items.length === 0 && !isLoading && (
-          <p className="p-8 text-center text-sm text-muted">
-            Nenhum produto. Comece pelo <b>Envio em Lote</b>.
-          </p>
-        )}
+        {isEmpty && <EmptyState />}
       </div>
 
-      {/* Desktop/tablet: tabela completa */}
+      {/* Desktop/tablet: tabela premium */}
       <Card className="hidden overflow-hidden p-0 md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                <th className="w-10 p-3">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(data?.items.length) && selected.size === data?.items.length}
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-border bg-surface-2/80 text-left text-[11px] uppercase tracking-wider text-faint backdrop-blur">
+                <th className="w-10 py-3 pl-4 pr-2">
+                  <Checkbox
+                    checked={allChecked}
                     onChange={toggleSelectAll}
                     aria-label="Selecionar todos"
                   />
                 </th>
-                <th className="p-3 font-medium">Produto</th>
-                <th className="p-3 font-medium">Categoria</th>
-                <th className="p-3 font-medium">Compra</th>
-                <th className="p-3 font-medium">Venda</th>
-                <th className="p-3 font-medium">Margem</th>
-                <th className="p-3 font-medium">IA</th>
-                <th className="p-3 font-medium">Status</th>
-                <th className="p-3 text-right font-medium">Ações</th>
+                <th className="px-3 py-3 font-semibold">Produto</th>
+                <th className="px-3 py-3 font-semibold">Categoria</th>
+                <th className="px-3 py-3 font-semibold">Compra</th>
+                <th className="px-3 py-3 font-semibold">Venda</th>
+                <th className="px-3 py-3 font-semibold">Margem</th>
+                <th className="px-3 py-3 font-semibold">IA</th>
+                <th className="px-3 py-3 font-semibold">Status</th>
+                <th className="px-3 py-3 pr-4 text-right font-semibold">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {isLoading && (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-muted">
-                    Carregando…
-                  </td>
-                </tr>
-              )}
-              {data?.items.map((p) => (
-                <tr key={p._id} className="border-b border-border/60 hover:bg-surface-2">
-                  <td className="p-3">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(p._id)}
-                      onChange={() => toggleSelected(p._id)}
-                      aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
-                    />
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-surface-2">
-                        {(p.images?.thumbnail || p.images?.original) && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={p.images.thumbnail || p.images.original}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        )}
+              {isLoading &&
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i} className="border-b border-border/60">
+                    <td colSpan={9} className="px-4 py-3">
+                      <Skeleton className="h-10 w-full rounded-xl" />
+                    </td>
+                  </tr>
+                ))}
+              {data?.items.map((p) => {
+                const checked = selected.has(p._id);
+                return (
+                  <tr key={p._id} className={rowClass(checked)}>
+                    <td className="py-3 pl-4 pr-2">
+                      <Checkbox
+                        checked={checked}
+                        onChange={() => toggleSelected(p._id)}
+                        aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
+                      />
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border/60">
+                          {(p.images?.thumbnail || p.images?.original) && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={p.images.thumbnail || p.images.original}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{p.vision?.name ?? p.internalSku}</p>
+                          <p className="truncate text-xs text-muted">{p.vision?.brand ?? '—'}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{p.vision?.name ?? p.internalSku}</p>
-                        <p className="truncate text-xs text-muted">{p.vision?.brand ?? '—'}</p>
+                    </td>
+                    <td className="px-3 py-3 text-muted">{p.vision?.category ?? '—'}</td>
+                    <td className="nums px-3 py-3">{formatBRL(p.pricing?.purchasePrice)}</td>
+                    <td className="nums px-3 py-3 font-medium">
+                      {formatBRL(p.pricing?.suggestedPrice)}
+                    </td>
+                    <td className="nums px-3 py-3 font-medium text-success">
+                      {formatPercent(p.pricing?.marginPercent)}
+                    </td>
+                    <td className="nums px-3 py-3 text-muted">
+                      {p.aiConfidence ? `${Math.round(p.aiConfidence * 100)}%` : '—'}
+                    </td>
+                    <td className="px-3 py-3">
+                      <StatusPill status={p.status} />
+                    </td>
+                    <td className="px-3 py-3 pr-4">
+                      <div className="flex items-center justify-end gap-0.5">
+                        <Link href={`/products/${p._id}`} aria-label="Editar">
+                          <IconButton size="sm">
+                            <Pencil size={15} />
+                          </IconButton>
+                        </Link>
+                        <IconButton
+                          size="sm"
+                          onClick={() => duplicate(p._id)}
+                          aria-label="Duplicar"
+                        >
+                          <Copy size={15} />
+                        </IconButton>
+                        <IconButton
+                          size="sm"
+                          tone="danger"
+                          onClick={() => remove(p._id)}
+                          aria-label="Excluir"
+                        >
+                          <Trash2 size={15} />
+                        </IconButton>
                       </div>
-                    </div>
-                  </td>
-                  <td className="p-3 text-muted">{p.vision?.category ?? '—'}</td>
-                  <td className="p-3 tabular-nums">{formatBRL(p.pricing?.purchasePrice)}</td>
-                  <td className="p-3 font-medium tabular-nums">
-                    {formatBRL(p.pricing?.suggestedPrice)}
-                  </td>
-                  <td className="p-3 tabular-nums text-success">
-                    {formatPercent(p.pricing?.marginPercent)}
-                  </td>
-                  <td className="p-3 tabular-nums">
-                    {p.aiConfidence ? `${Math.round(p.aiConfidence * 100)}%` : '—'}
-                  </td>
-                  <td className="p-3">
-                    <StatusPill status={p.status} />
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <Link
-                        href={`/products/${p._id}`}
-                        className="rounded-lg p-2 text-muted hover:bg-surface hover:text-fg"
-                      >
-                        <Pencil size={15} />
-                      </Link>
-                      <button
-                        onClick={() => duplicate(p._id)}
-                        className="rounded-lg p-2 text-muted hover:bg-surface hover:text-fg"
-                      >
-                        <Copy size={15} />
-                      </button>
-                      <button
-                        onClick={() => remove(p._id)}
-                        className="rounded-lg p-2 text-muted hover:bg-surface hover:text-danger"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {data && data.items.length === 0 && !isLoading && (
+                    </td>
+                  </tr>
+                );
+              })}
+              {isEmpty && (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-muted">
-                    Nenhum produto. Comece pelo <b>Envio em Lote</b>.
+                  <td colSpan={9}>
+                    <EmptyState />
                   </td>
                 </tr>
               )}
@@ -337,26 +345,55 @@ export default function ProductsPage() {
       </Card>
 
       {data && data.pages > 1 && (
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-          <button
+        <div className="mt-5 flex items-center justify-center gap-1.5 text-sm">
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={page <= 1}
             onClick={() => setPage((p) => p - 1)}
-            className="rounded-lg px-3 py-1.5 hover:bg-surface-2 disabled:opacity-40"
           >
             Anterior
-          </button>
-          <span className="text-muted">
-            {page} / {data.pages}
+          </Button>
+          <span className="nums px-3 text-muted">
+            {page} <span className="text-faint">de</span> {data.pages}
           </span>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={page >= data.pages}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded-lg px-3 py-1.5 hover:bg-surface-2 disabled:opacity-40"
           >
             Próxima
-          </button>
+          </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function rowClass(checked: boolean): string {
+  return [
+    'border-b border-border/60 transition-colors duration-150',
+    checked ? 'bg-primary/[0.05]' : 'hover:bg-surface-2/70',
+  ].join(' ');
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-surface-2 text-faint">
+        <PackageOpen size={26} />
+      </div>
+      <div>
+        <p className="text-sm font-medium">Nenhum produto ainda</p>
+        <p className="mt-1 text-sm text-muted">
+          Comece pelo{' '}
+          <Link href="/lote" className="font-medium text-primary hover:underline">
+            Envio em Lote
+          </Link>
+          .
+        </p>
+      </div>
     </div>
   );
 }

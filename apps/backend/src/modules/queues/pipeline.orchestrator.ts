@@ -125,7 +125,16 @@ export class PipelineOrchestrator {
         (product.vision as { labelPrice?: number }).labelPrice ??
         (product.market as { minPrice?: number })?.minPrice ??
         0;
-      const result = this.pricing.run(purchase, (product.market as never) ?? undefined);
+
+      // Preserva o PREÇO DE VENDA informado pelo operador (fluxo Envio em Lote):
+      // se ele já digitou um preço, mantemos e só derivamos lucro/margem/ROI.
+      // Sem preço informado, o Pricing Agent sugere via markup + mercado.
+      const manualSale = (product.pricing as { suggestedPrice?: number })?.suggestedPrice;
+      const result =
+        manualSale && manualSale > 0
+          ? this.pricing.withSalePrice(purchase, manualSale)
+          : this.pricing.run(purchase, (product.market as never) ?? undefined);
+
       await this.products.updateOne(
         { _id: data.productId },
         { $set: { pricing: result, status: ProductStatus.READY } },

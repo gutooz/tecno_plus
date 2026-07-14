@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, Eye, EyeOff, Lock, Mail, Sparkles, Zap } from 'lucide-react';
 import { api, getToken, setRefreshToken, setToken } from '@/lib/api';
-import { Button, Checkbox, Input, Spinner } from '@/components/ui';
+import { Button, Checkbox, Input } from '@/components/ui';
 
 type Mode = 'login' | 'register';
 
@@ -63,10 +63,18 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen bg-bg">
-      {/* Institutional panel — hidden below lg, ~45% width above it */}
-      <div className="relative hidden overflow-hidden bg-[#050b16] p-12 text-white lg:flex lg:w-[45%] lg:flex-col lg:justify-between">
-        <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-primary/30 blur-[100px]" />
-        <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-cyan-400/20 blur-[110px]" />
+      {/* Painel institucional — sóbrio, sem neon */}
+      <div className="relative hidden overflow-hidden bg-[#0b0f16] p-12 text-white lg:flex lg:w-[45%] lg:flex-col lg:justify-between">
+        {/* Realce único, muito suave (nada de brilhos saturados) */}
+        <div className="pointer-events-none absolute -left-32 -top-24 h-96 w-96 rounded-full bg-primary/15 blur-[120px]" />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)',
+            backgroundSize: '44px 44px',
+          }}
+        />
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -74,7 +82,7 @@ export default function LoginPage() {
           transition={{ duration: 0.4 }}
           className="relative z-10 flex items-center gap-3"
         >
-          <div className="h-9 w-9 overflow-hidden rounded-xl shadow-glass">
+          <div className="h-9 w-9 overflow-hidden rounded-2xl ring-1 ring-white/15">
             <Image
               src="/logo.jpg"
               alt="Tecno Plus"
@@ -83,7 +91,7 @@ export default function LoginPage() {
               className="h-full w-full object-cover"
             />
           </div>
-          <span className="text-sm font-medium text-white/80">Tecno Plus AI Catalog</span>
+          <span className="text-sm font-medium text-white/75">Tecno Plus AI Catalog</span>
         </motion.div>
 
         <motion.div
@@ -92,20 +100,20 @@ export default function LoginPage() {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="relative z-10 flex flex-col items-center gap-6 text-center"
         >
-          <div className="h-40 w-40 overflow-hidden rounded-[2rem] shadow-glass ring-1 ring-white/10">
+          <div className="h-36 w-36 overflow-hidden rounded-[2rem] shadow-glass ring-1 ring-white/10">
             <Image
               src="/logo.jpg"
               alt=""
-              width={160}
-              height={160}
+              width={144}
+              height={144}
               className="h-full w-full object-cover"
             />
           </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-semibold tracking-tight">
+          <div className="space-y-2.5">
+            <h2 className="text-[26px] font-semibold leading-tight tracking-tight">
               Catalogar produtos nunca foi tão rápido
             </h2>
-            <p className="mx-auto max-w-sm text-sm text-white/60">
+            <p className="mx-auto max-w-sm text-sm leading-relaxed text-white/55">
               Envie fotos, deixe a IA cuidar da ficha técnica e publique em minutos — tudo em um só
               lugar.
             </p>
@@ -119,26 +127,26 @@ export default function LoginPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.2 + i * 0.08 }}
-              className="glass flex flex-1 items-center gap-3 rounded-2xl border-white/10 bg-white/5 p-4"
+              className="flex flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary">
                 <Icon size={16} />
               </span>
               <div className="text-left">
                 <p className="text-sm font-semibold text-white">{value}</p>
-                <p className="text-xs text-white/50">{label}</p>
+                <p className="text-xs text-white/45">{label}</p>
               </div>
             </motion.div>
           ))}
         </div>
       </div>
 
-      {/* Form panel */}
+      {/* Formulário */}
       <div className="flex w-full flex-1 items-center justify-center p-6 lg:w-[55%]">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: 'easeOut' }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
           className="card w-full max-w-sm p-8"
         >
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
@@ -152,7 +160,7 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <h1 className="text-xl font-semibold">
+              <h1 className="text-xl font-semibold tracking-tight">
                 {mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
               </h1>
               <p className="mt-1 text-sm text-muted">
@@ -236,8 +244,7 @@ export default function LoginPage() {
               )}
             </AnimatePresence>
 
-            <Button type="submit" size="lg" disabled={loading} className="mt-1 w-full gap-2">
-              {loading && <Spinner className="text-primary-fg" />}
+            <Button type="submit" size="lg" loading={loading} className="mt-1 w-full">
               {loading ? 'Entrando…' : mode === 'login' ? 'Entrar' : 'Cadastrar'}
             </Button>
           </form>
