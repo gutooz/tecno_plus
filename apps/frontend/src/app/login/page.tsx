@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, Eye, EyeOff, Lock, Mail, Sparkles, Zap } from 'lucide-react';
-import { api, getToken, setToken } from '@/lib/api';
+import { api, getToken, setRefreshToken, setToken } from '@/lib/api';
 import { Button, Checkbox, Input, Spinner } from '@/components/ui';
 
 type Mode = 'login' | 'register';
@@ -41,8 +41,12 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<{ accessToken: string }>(`/auth/${mode}`, { email, password });
+      const res = await api.post<{ accessToken: string; refreshToken: string }>(`/auth/${mode}`, {
+        email,
+        password,
+      });
       setToken(res.accessToken, remember);
+      setRefreshToken(res.refreshToken, remember);
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao autenticar');

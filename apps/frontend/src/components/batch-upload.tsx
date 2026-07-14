@@ -159,8 +159,11 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
 
       setPending((prev) => prev.filter((p) => p.id !== id));
       return true;
-    } catch {
+    } catch (e) {
       setPending((prev) => prev.map((p) => (p.id === id ? { ...p, saving: false } : p)));
+      alert(
+        `Não foi possível salvar "${product.name}": ${e instanceof Error ? e.message : String(e)}`,
+      );
       return false;
     }
   }

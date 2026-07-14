@@ -100,13 +100,19 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       });
       setEdit(null);
       qc.invalidateQueries({ queryKey: ['product', id] });
+    } catch (e) {
+      alert(`Não foi possível salvar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
   }
   async function publish() {
-    await api.post(`/products/${id}/publish`);
-    qc.invalidateQueries({ queryKey: ['product', id] });
+    try {
+      await api.post(`/products/${id}/publish`);
+      qc.invalidateQueries({ queryKey: ['product', id] });
+    } catch (e) {
+      alert(`Não foi possível publicar: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   if (isLoading || !p) return <p className="text-muted">Carregando…</p>;
