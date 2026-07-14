@@ -27,6 +27,9 @@ export default () => ({
     textProvider: process.env.AI_TEXT_PROVIDER ?? process.env.AI_PROVIDER ?? 'claude',
     visionModel: process.env.AI_VISION_MODEL ?? 'gemini-flash-latest',
     textModel: process.env.AI_TEXT_MODEL ?? 'claude-haiku-4-5',
+    // Modelo de geração/edição de imagem (Gemini "Nano Banana") — recorta o
+    // fundo e recompõe o produto num fundo limpo para as imagens da Shopee.
+    imageModel: process.env.AI_IMAGE_MODEL ?? 'gemini-2.5-flash-image',
     openaiKey: process.env.OPENAI_API_KEY ?? '',
     anthropicKey: process.env.ANTHROPIC_API_KEY ?? '',
     geminiKey: process.env.GEMINI_API_KEY ?? '',
