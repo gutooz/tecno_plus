@@ -7,8 +7,6 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
-    "worker": "node dist/worker.js",
-    "worker:dev": "ts-node -r tsconfig-paths/register src/worker.ts",
     "bot": "node dist/telegram.js",
     "bot:dev": "ts-node -r tsconfig-paths/register src/telegram.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",

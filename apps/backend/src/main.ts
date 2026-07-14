@@ -7,9 +7,9 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 /**
- * Entrypoint HTTP (API). NÃO processa jobs — apenas enfileira. O processamento
- * pesado roda no worker.ts. Isso garante que a interface nunca fique bloqueada
- * aguardando IA.
+ * Entrypoint HTTP (API). O pipeline de IA roda neste mesmo processo, em segundo
+ * plano (agendado via setImmediate no QueueService) — a resposta HTTP volta na
+ * hora, sem bloquear a interface esperando a IA, e sem depender de Redis/worker.
  */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });

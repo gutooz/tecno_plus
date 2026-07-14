@@ -17,6 +17,7 @@ import {
 } from './publishers/marketplace.publishers';
 import { Product, ProductDocument } from '../modules/database/schemas/product.schema';
 import { PipelineOrchestrator } from '../modules/queues/pipeline.orchestrator';
+import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
 
 /**
  * Reúne os 6 agentes + as coleções de adapters (fontes de mercado, publishers).
@@ -32,6 +33,9 @@ import { PipelineOrchestrator } from '../modules/queues/pipeline.orchestrator';
     PricingAgent,
     PublisherAgent,
     PipelineOrchestrator,
+    // Alias por token string p/ o QueueService resolver a orquestração sem
+    // importar a classe (evita ciclo de import).
+    { provide: PIPELINE_ORCHESTRATOR, useExisting: PipelineOrchestrator },
     WebsitePublisher,
     {
       provide: MARKET_SOURCES,
@@ -56,6 +60,7 @@ import { PipelineOrchestrator } from '../modules/queues/pipeline.orchestrator';
     PricingAgent,
     PublisherAgent,
     PipelineOrchestrator,
+    PIPELINE_ORCHESTRATOR,
     MARKET_SOURCES,
     MARKETPLACE_PUBLISHERS,
   ],

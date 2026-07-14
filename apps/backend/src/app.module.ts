@@ -19,8 +19,9 @@ import { HealthModule } from './modules/health/health.module';
 
 /**
  * Módulo raiz. Ordem de importação: infra global (config, db, storage, ai,
- * queues, agents) e depois os módulos de feature (HTTP). O worker.ts reaproveita
- * este mesmo AppModule para ter acesso a agentes e orquestrador.
+ * queues, agents) e depois os módulos de feature (HTTP). O pipeline de IA roda
+ * dentro deste mesmo processo, em segundo plano (ver QueueService) — sem worker
+ * separado nem Redis.
  */
 @Module({
   imports: [
