@@ -30,7 +30,14 @@ interface ProductDetail {
     marginPercent?: number;
     roi?: number;
   };
-  images?: { original?: string; hd?: string; square?: string; webp?: string; thumbnail?: string };
+  images?: {
+    original?: string;
+    hd?: string;
+    square?: string;
+    webp?: string;
+    thumbnail?: string;
+    shopee?: string[];
+  };
 }
 
 interface EditableFields {
@@ -110,9 +117,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
   if (isLoading || !p) return <p className="text-muted">Carregando…</p>;
 
-  const gallery = [p.images?.hd, p.images?.square, p.images?.webp, p.images?.original].filter(
-    Boolean,
-  ) as string[];
+  // Mostra as 3 imagens Shopee (produto recortado em fundo limpo) quando prontas;
+  // senão, cai nas variantes antigas. A foto original entra ao fim como referência.
+  const gallery = (
+    p.images?.shopee?.length
+      ? [...p.images.shopee, p.images?.original]
+      : [p.images?.hd, p.images?.square, p.images?.webp, p.images?.original]
+  ).filter(Boolean) as string[];
 
   return (
     <div className="mx-auto max-w-5xl">

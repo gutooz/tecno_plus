@@ -181,6 +181,9 @@ export class ProductsService {
       );
       const salePrice = Number(pricing.suggestedPrice ?? 0);
       const purchasePrice = Number(pricing.purchasePrice ?? 0);
+      // Prioriza as 3 imagens Shopee (produto recortado em fundo limpo); se ainda
+      // não existirem, cai nas variantes antigas.
+      const shopee = Array.isArray(images.shopee) ? (images.shopee as string[]) : [];
 
       sheet.addRow({
         name: title.slice(0, 120),
@@ -189,9 +192,9 @@ export class ProductsService {
         sku: product.internalSku,
         price: salePrice || '',
         stock: 1,
-        image1: String(images.square ?? images.hd ?? images.original ?? ''),
-        image2: String(images.hd ?? images.webp ?? ''),
-        image3: String(images.original ?? ''),
+        image1: String(shopee[0] ?? images.square ?? images.hd ?? images.original ?? ''),
+        image2: String(shopee[1] ?? images.hd ?? images.webp ?? ''),
+        image3: String(shopee[2] ?? images.original ?? ''),
         purchasePrice: purchasePrice || '',
         profit: salePrice && purchasePrice ? salePrice - purchasePrice : '',
         notes: product.status === ProductStatus.READY ? 'Pronto para revisar' : product.status,

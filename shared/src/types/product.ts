@@ -79,6 +79,8 @@ export interface ProductImageSet {
   thumbnail?: string;
   backgroundRemoved?: string;
   isManufacturerProvided?: boolean;
+  /** 3 imagens prontas p/ Shopee (1:1, fundo limpo): produto recortado e recomposto. */
+  shopee?: string[];
 }
 
 /**
