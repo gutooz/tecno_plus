@@ -19,9 +19,10 @@ import { PublisherAgent } from '../../agents/publisher.agent';
 import { QueueService } from './queue.service';
 
 /**
- * Orquestra o pipeline dos agentes. Cada método `handleX` é o corpo de um
- * worker BullMQ (definido em worker.ts). Persiste o resultado, registra o log
- * do agente (início/fim/tempo/tokens/modelo) e enfileira a próxima etapa.
+ * Orquestra o pipeline dos agentes. Cada método `handleX` é uma etapa,
+ * executada em segundo plano pelo QueueService (no próprio processo, sem Redis).
+ * Persiste o resultado, registra o log do agente (início/fim/tempo/tokens/modelo)
+ * e agenda a próxima etapa via `queue.enqueue`.
  *
  * Confiança baixa (< 0.5) desvia para revisão manual (NEEDS_REVIEW) e o
  * pipeline pausa até o operador aprovar.
