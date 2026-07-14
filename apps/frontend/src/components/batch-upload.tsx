@@ -21,12 +21,13 @@ interface PendingProduct {
   name: string;
   purchasePrice: string;
   salePrice: string;
+  weight: string;
 }
 
 interface PendingApiItem {
   _id: string;
   internalSku: string;
-  vision?: { name?: string; labelPrice?: number };
+  vision?: { name?: string; labelPrice?: number; weight?: number };
   images?: { original?: string };
 }
 
@@ -63,6 +64,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             name: it.vision?.name ?? '',
             purchasePrice: it.vision?.labelPrice ? String(it.vision.labelPrice) : '',
             salePrice: '',
+            weight: it.vision?.weight ? String(it.vision.weight) : '',
           })),
         );
       } catch {
@@ -90,7 +92,11 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
     addFiles(e.dataTransfer.files);
   }
 
-  function updateField(id: string, field: 'name' | 'purchasePrice' | 'salePrice', value: string) {
+  function updateField(
+    id: string,
+    field: 'name' | 'purchasePrice' | 'salePrice' | 'weight',
+    value: string,
+  ) {
     setPending((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   }
 
@@ -114,6 +120,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
         name: '',
         purchasePrice: '',
         salePrice: '',
+        weight: '',
       }));
 
       setPending((prev) => [...prev, ...uploaded]);
@@ -133,10 +140,14 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
     try {
       const purchasePrice = Number(product.purchasePrice.replace(',', '.'));
       const salePrice = Number(product.salePrice.replace(',', '.'));
+      const weight = Number(product.weight.replace(',', '.'));
 
       await api.put(`/products/${id}`, {
         'vision.name': product.name,
         'vision.labelPrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
+        // Peso é obrigatório pela Shopee (frete) — só grava se um número > 0 foi
+        // digitado; nunca inventamos um valor (chave omitida = undefined no JSON).
+        'vision.weight': Number.isFinite(weight) && weight > 0 ? weight : undefined,
         'pricing.purchasePrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
         'pricing.suggestedPrice': Number.isFinite(salePrice) ? salePrice : 0,
         'pricing.profit':
@@ -329,7 +340,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-3 gap-2.5">
                   <label className="block">
                     <span className="mb-1 block text-xs font-medium text-muted">Preço pago</span>
                     <Input
@@ -348,6 +359,15 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                       value={product.salePrice}
                       onChange={(e) => updateField(product.id, 'salePrice', e.target.value)}
                       placeholder="39,90"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-muted">Peso (kg)</span>
+                    <Input
+                      inputMode="decimal"
+                      value={product.weight}
+                      onChange={(e) => updateField(product.id, 'weight', e.target.value)}
+                      placeholder="0,30"
                     />
                   </label>
                 </div>
@@ -374,6 +394,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                     <th className="px-3 py-3 font-semibold">Nome do produto</th>
                     <th className="px-3 py-3 font-semibold">Preço pago</th>
                     <th className="px-3 py-3 font-semibold">Preço de venda</th>
+                    <th className="px-3 py-3 font-semibold">Peso (kg)</th>
                     <th className="w-24 px-3 py-3 font-semibold">&nbsp;</th>
                   </tr>
                 </thead>
@@ -410,6 +431,14 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                           value={product.salePrice}
                           onChange={(e) => updateField(product.id, 'salePrice', e.target.value)}
                           placeholder="39,90"
+                        />
+                      </td>
+                      <td className="min-w-28 px-3 py-3">
+                        <Input
+                          inputMode="decimal"
+                          value={product.weight}
+                          onChange={(e) => updateField(product.id, 'weight', e.target.value)}
+                          placeholder="0,30"
                         />
                       </td>
                       <td className="px-3 py-3">

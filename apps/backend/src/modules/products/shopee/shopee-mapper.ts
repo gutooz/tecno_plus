@@ -40,6 +40,21 @@ export interface SourceProduct {
   pricing?: Record<string, unknown> | null;
   images?: Record<string, unknown> | null;
   variations?: SourceVariation[];
+  /**
+   * Dados fiscais/NF-e (NCM, CFOP, CSOSN, CEST, ...). O catálogo hoje não
+   * coleta isso em lugar nenhum — só existe aqui para que, quando/se passar a
+   * existir (ex.: cadastro manual do time fiscal), o exportador já saiba
+   * onde ler. Até lá fica vazio de propósito (o validador sinaliza).
+   */
+  fiscal?: Record<string, unknown> | null;
+  /** Ativação de canais logísticos (nomes variam por loja/conta). */
+  logistics?: { canalXpressCpf?: boolean; canalRetiradaComprador?: boolean } | null;
+  /** GTIN e IDs de compatibilidade (marca/modelo/ano/versão). */
+  identifiers?: Record<string, unknown> | null;
+  /** Tabela de medidas: preencher só um dos dois (template OU imagem). */
+  sizeChart?: { templateId?: string | number; imageUrl?: string } | null;
+  /** Item agrupável (caixa com N pacotes/unidades). */
+  groupedItem?: Record<string, unknown> | null;
 }
 
 /** Uma linha mapeada: valores por CHAVE de coluna (não por rótulo). */
@@ -163,6 +178,13 @@ export function mapProduct(p: SourceProduct, template: ShopeeTemplate): MappedPr
   const largura = num(p.vision, 'width') ?? num(p.vision, 'largura');
   const altura = num(p.vision, 'height') ?? num(p.vision, 'altura');
 
+  // Fiscal/canal/identificadores/tabela de medidas/item agrupável: só entram
+  // se já vierem prontos nos dados — nunca inventados aqui (o validador
+  // sinaliza o que falta).
+  const fiscal = p.fiscal ?? {};
+  const identifiers = p.identifiers ?? {};
+  const groupedItem = p.groupedItem ?? {};
+
   // Base comum a todas as linhas do produto.
   const base = (): Record<string, CellValue> => {
     const v: Record<string, CellValue> = {};
@@ -177,6 +199,51 @@ export function mapProduct(p: SourceProduct, template: ShopeeTemplate): MappedPr
     if (largura != null) v.largura = largura;
     if (altura != null) v.altura = altura;
     fillPhotos(v, images);
+
+    const gtin = str(identifiers, 'gtin');
+    if (gtin) v.gtin = gtin;
+    const idsCompat = str(identifiers, 'idsCompatibilidade');
+    if (idsCompat) v.ids_compatibilidade = idsCompat;
+
+    if (p.sizeChart?.templateId != null && p.sizeChart.templateId !== '')
+      v.tabela_medidas_id = p.sizeChart.templateId;
+    else if (p.sizeChart?.imageUrl) v.imagem_tamanhos = p.sizeChart.imageUrl;
+
+    if (p.logistics?.canalXpressCpf != null)
+      v.canal_xpress_cpf = p.logistics.canalXpressCpf ? 'Ativar' : 'Off';
+    if (p.logistics?.canalRetiradaComprador != null)
+      v.canal_retirada_comprador = p.logistics.canalRetiradaComprador ? 'Ativar' : 'Off';
+
+    const fiscalFields: Array<[string, string]> = [
+      ['ncm', 'ncm'],
+      ['cfop_mesmo_estado', 'cfopMesmoEstado'],
+      ['cfop_outro_estado', 'cfopOutroEstado'],
+      ['origem', 'origem'],
+      ['csosn', 'csosn'],
+      ['cest', 'cest'],
+      ['unidade_medida', 'unidadeMedida'],
+      ['cst_pis_cofins', 'cstPisCofins'],
+      ['pct_tributos', 'pctTributos'],
+      ['tipo_operacao', 'tipoOperacao'],
+      ['ex_tipi', 'exTipi'],
+      ['fci_num', 'fciNum'],
+      ['recopi_num', 'recopiNum'],
+      ['info_adicional', 'infoAdicional'],
+    ];
+    for (const [colKey, srcKey] of fiscalFields) {
+      const val = str(fiscal, srcKey);
+      if (val) v[colKey] = val;
+    }
+
+    const produtoAgrupavel = groupedItem.isGrouped;
+    if (produtoAgrupavel != null) v.produto_agrupavel = produtoAgrupavel ? 'Sim' : 'Não';
+    const gtinAgrup = str(groupedItem, 'gtinUnidadeTributavel');
+    if (gtinAgrup) v.gtin_unidade_tributavel = gtinAgrup;
+    const qtdAgrup = num(groupedItem, 'qtdUnidadeTributavel');
+    if (qtdAgrup != null) v.qtd_unidade_tributavel = qtdAgrup;
+    const unidadeAgrup = str(groupedItem, 'unidadeMedidaAgrupavel');
+    if (unidadeAgrup) v.unidade_medida_agrupavel = unidadeAgrup;
+
     return v;
   };
 

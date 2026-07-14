@@ -33,7 +33,8 @@ import ExcelJS from 'exceljs';
  *   • Imagens entram como URL.
  */
 
-export type ShopeeFieldGroup = 'basica' | 'variacao' | 'venda' | 'envio' | 'midia';
+export type ShopeeFieldGroup =
+  'basica' | 'variacao' | 'venda' | 'envio' | 'midia' | 'canal' | 'fiscal' | 'agrupado';
 
 export interface ShopeeColumn {
   /** Chave interna estável usada pelo mapper/validador (não vai para a planilha). */
@@ -75,33 +76,57 @@ export interface ShopeeTemplate {
   officialWorksheet?: ExcelJS.Worksheet;
 }
 
-// Limites validados (conservadores — ajustáveis). Não são "colunas", são regras.
+/**
+ * Limites exatos lidos da linha de formato (linha 6) da aba "Modelo" do
+ * template oficial Shopee BR baixado do Seller Center — não são estimativa.
+ * Reveja estes números sempre que baixar um template novo (a Shopee muda os
+ * limites sem aviso).
+ */
 export const SHOPEE_LIMITS = {
-  titleMin: 10,
+  titleMin: 2,
   titleMax: 120,
-  descriptionMax: 3000,
+  descriptionMin: 10,
+  descriptionMax: 5000,
+  priceMin: 1,
+  priceMax: 100000,
+  /** Preço da variação mais cara ÷ preço da mais barata não pode passar disso. */
+  maxVariationPriceRatio: 4,
+  stockMin: 0,
+  stockMax: 10000000,
+  weightMax: 100000,
+  dimensionMax: 10000000,
+  skuMaxLength: 100,
+  variationIntegrationMaxLength: 100,
+  variationNameMaxLength: 30,
+  gtinMinLength: 8,
+  gtinMaxLength: 14,
   /** Estoque assumido quando o produto não traz quantidade (marcado como corrigido). */
   defaultStock: 1,
   maxAdditionalPhotos: 8,
 } as const;
 
-/** Colunas de foto: 1 capa + N adicionais, geradas em ordem. */
+/**
+ * Colunas de foto: 1 capa + N adicionais, geradas em ordem.
+ * Rótulos exatos da aba "Modelo" oficial: "Imagem de capa" e "Imagem do
+ * produto 1".."8". A capa é tecnicamente "Opcional" na planilha de upload em
+ * massa (dá para subir depois na ferramenta de atributos), mas é obrigatória
+ * antes de o anúncio poder ser publicado — por isso o aviso explícito.
+ */
 function photoColumns(): ShopeeColumn[] {
   const cover: ShopeeColumn = {
     key: 'foto_capa',
-    header: 'Foto de Capa',
+    header: 'Imagem de capa',
     group: 'midia',
-    required: true,
-    format: 'URL pública (https://…)',
-    note: 'Primeira imagem = capa do anúncio. Recomendado 1:1, fundo limpo.',
+    format: 'URL pública (https://…), máx. 2MB, JPG/JPEG/PNG, proporção 1:1',
+    note: 'Opcional para o upload em massa, mas obrigatória antes de o anúncio poder ser publicado. A imagem não pode ser duplicada com outro anúncio da loja.',
   };
   const extras: ShopeeColumn[] = Array.from(
     { length: SHOPEE_LIMITS.maxAdditionalPhotos },
     (_, i) => ({
       key: `foto_${i + 1}`,
-      header: `Foto ${i + 1}`,
+      header: `Imagem do produto ${i + 1}`,
       group: 'midia' as const,
-      format: 'URL pública (https://…)',
+      format: 'URL pública (https://…), máx. 2MB, JPG/JPEG/PNG, proporção 1:1',
       note: 'Imagem adicional do produto.',
     }),
   );
@@ -113,7 +138,7 @@ function photoColumns(): ShopeeColumn[] {
  * (source: 'reference' — sobreposto pelo arquivo oficial quando disponível.)
  */
 export const REFERENCE_TEMPLATE_BR: ShopeeTemplate = {
-  version: 'ref-br-2026-07',
+  version: 'ref-br-2026-07-15',
   region: 'BR',
   source: 'reference',
   currency: 'BRL',
@@ -125,63 +150,67 @@ export const REFERENCE_TEMPLATE_BR: ShopeeTemplate = {
       key: 'categoria',
       header: 'Categoria',
       group: 'basica',
-      required: true,
-      categoryDependent: true,
-      format: 'ID/caminho de categoria da Shopee',
-      note: 'A Shopee exige a categoria oficial (ID numérico no Seller Center). O texto da IA vai aqui como referência — confirme o ID correto.',
+      format: 'ID/nome de categoria da Shopee (caixa suspensa no arquivo oficial)',
+      note: 'Opcional no arquivo oficial atual (a Shopee recomenda mesmo assim: categoria imprecisa reduz o alcance na busca).',
     },
     {
       key: 'nome',
-      header: 'Nome do produto',
+      header: 'Nome do Produto',
       group: 'basica',
       required: true,
       maxLength: SHOPEE_LIMITS.titleMax,
       format: `Texto, ${SHOPEE_LIMITS.titleMin}–${SHOPEE_LIMITS.titleMax} caracteres`,
-      note: 'Sem emoji, sem caracteres proibidos, sem repetição excessiva.',
+      note: 'Deve incluir marca e modelo do produto. Sem emoji, sem palavras-chave irrelevantes/proibidas.',
     },
     {
       key: 'descricao',
-      header: 'Descrição do produto',
+      header: 'Descrição do Produto',
       group: 'basica',
       required: true,
       maxLength: SHOPEE_LIMITS.descriptionMax,
-      format: `Texto até ${SHOPEE_LIMITS.descriptionMax} caracteres`,
-      note: 'Descrição comercial e técnica do produto.',
+      format: `Texto, ${SHOPEE_LIMITS.descriptionMin}–${SHOPEE_LIMITS.descriptionMax} caracteres`,
+      note: 'Evite palavras irrelevantes e proibidas.',
     },
     {
       key: 'marca',
       header: 'Marca',
       group: 'basica',
       categoryDependent: true,
-      format: 'Texto (ou "Sem marca")',
-      note: 'Marcas válidas dependem da categoria; use "Sem marca" quando aplicável.',
+      format: 'ID da marca (ou vazio para preencher depois na ferramenta de atributos)',
+      note: 'Só existe como coluna quando o arquivo oficial inclui atributos de categoria — a exportação "basic" sem categoria não a traz. Obrigatória (marca válida ou "sem marca") quando presente.',
     },
     // ── Variação ─────────────────────────────────────────────────────────
     {
       key: 'var_integracao',
-      header: 'Número de Integração da Variação',
+      header: 'Número de Integração de Variação',
       group: 'variacao',
       requiredForVariations: true,
-      format: 'Código único por produto',
+      maxLength: SHOPEE_LIMITS.variationIntegrationMaxLength,
+      format: `Texto único por produto, 1–${SHOPEE_LIMITS.variationIntegrationMaxLength} caracteres`,
       note: 'Mesmo código para todas as variações do mesmo produto. Não pode repetir entre produtos.',
     },
     {
       key: 'var_nome1',
       header: 'Nome da Variação 1',
       group: 'variacao',
-      format: 'Texto (ex.: Cor, Tamanho)',
+      requiredForVariations: true,
+      maxLength: SHOPEE_LIMITS.variationNameMaxLength,
+      format: `Texto, 1–${SHOPEE_LIMITS.variationNameMaxLength} caracteres (ex.: Cor, Tamanho)`,
       note: 'Cada opção de variação é uma nova linha.',
     },
     {
       key: 'var_opcao1',
       header: 'Opção para Variação 1',
       group: 'variacao',
-      format: 'Texto (ex.: Preto, M)',
+      requiredForVariations: true,
+      maxLength: SHOPEE_LIMITS.variationNameMaxLength,
+      format: `Texto, 1–${SHOPEE_LIMITS.variationNameMaxLength} caracteres (ex.: Preto, M)`,
     },
     {
       key: 'var_imagem',
       header: 'Imagem por Variação',
       group: 'variacao',
+      categoryDependent: true,
       format: 'URL pública (https://…)',
       note: 'Imagem no 1º nível de variação. Se usar, preencha para todas as opções do nível 1.',
     },
@@ -189,13 +218,17 @@ export const REFERENCE_TEMPLATE_BR: ShopeeTemplate = {
       key: 'var_nome2',
       header: 'Nome da Variação 2',
       group: 'variacao',
-      format: 'Texto (ex.: Tamanho)',
+      categoryDependent: true,
+      maxLength: SHOPEE_LIMITS.variationNameMaxLength,
+      format: `Texto, 1–${SHOPEE_LIMITS.variationNameMaxLength} caracteres (ex.: Tamanho)`,
     },
     {
       key: 'var_opcao2',
       header: 'Opção para Variação 2',
       group: 'variacao',
-      format: 'Texto (ex.: P, M, G)',
+      categoryDependent: true,
+      maxLength: SHOPEE_LIMITS.variationNameMaxLength,
+      format: `Texto, 1–${SHOPEE_LIMITS.variationNameMaxLength} caracteres (ex.: P, M, G)`,
       note: 'Correlacione as duas variações. Estoque 0 para combinações indisponíveis.',
     },
     // ── Informações de Venda ─────────────────────────────────────────────
@@ -204,80 +237,276 @@ export const REFERENCE_TEMPLATE_BR: ShopeeTemplate = {
       header: 'Preço',
       group: 'venda',
       required: true,
-      format: 'Número > 0 (BRL, ponto decimal)',
-      note: 'Preço de venda por unidade/variação.',
+      format: `Número, ${SHOPEE_LIMITS.priceMin.toFixed(2)}–${SHOPEE_LIMITS.priceMax.toFixed(2)} (BRL)`,
+      note: `Preço de venda por unidade/variação. Entre variações do mesmo produto: (preço mais caro ÷ preço mais barato) ≤ ${SHOPEE_LIMITS.maxVariationPriceRatio}.`,
     },
     {
       key: 'estoque',
       header: 'Estoque',
       group: 'venda',
       required: true,
-      format: 'Inteiro ≥ 0',
+      format: `Inteiro, ${SHOPEE_LIMITS.stockMin}–${SHOPEE_LIMITS.stockMax}`,
       note: '0 para variações indisponíveis.',
     },
     {
       key: 'sku',
-      header: 'SKU',
+      header: 'SKU da Variação',
       group: 'venda',
-      format: 'Texto único',
-      note: 'Código do vendedor. Não pode repetir dentro do arquivo.',
+      maxLength: SHOPEE_LIMITS.skuMaxLength,
+      format: `Texto único, até ${SHOPEE_LIMITS.skuMaxLength} caracteres`,
+      note: 'Identificador da variação. Não recomendado duplicar dentro da loja.',
     },
     {
       key: 'sku_pai',
-      header: 'SKU Pai',
+      header: 'SKU principal',
       group: 'venda',
-      format: 'Texto',
-      note: 'SKU do produto (comum às variações).',
+      maxLength: SHOPEE_LIMITS.skuMaxLength,
+      format: `Texto, 1–${SHOPEE_LIMITS.skuMaxLength} caracteres`,
+      note: 'Localiza o produto principal (comum às variações). Não recomendado duplicar dentro da loja.',
+    },
+    {
+      key: 'gtin',
+      header: 'GTIN (EAN)',
+      group: 'venda',
+      format: `${SHOPEE_LIMITS.gtinMinLength}–${SHOPEE_LIMITS.gtinMaxLength} dígitos`,
+      note: 'Identificador GS1 (UPC/EAN/JAN/ISBN).',
+    },
+    {
+      key: 'ids_compatibilidade',
+      header: 'IDs de compatibilidade',
+      group: 'venda',
+      format: '[ID marca,ID modelo,ID ano,ID versão];[...]',
+      note: 'Ex.: [1234,4567,7899,5432];[6789,6788,5433,7889]. Consulte a lista de modelos compatíveis do Seller Center.',
+    },
+    {
+      key: 'tabela_medidas_id',
+      header: 'Template da Tabela de Medidas',
+      group: 'midia',
+      categoryDependent: true,
+      format: 'ID do template (aba "Lista de Modelos de Tabela de Medidas")',
+      note: 'Preencha isto OU "Imagem de Tamanhos" — nunca os dois (se ambos, só o template é mantido).',
+    },
+    {
+      key: 'imagem_tamanhos',
+      header: 'Imagem de Tamanhos',
+      group: 'midia',
+      categoryDependent: true,
+      format: 'URL, máx. 2MB, PDF/JPG/PNG, até 1280×1280px',
+      note: 'Alternativa a "Template da Tabela de Medidas" — preencha só um dos dois.',
     },
     // ── Informações de Envio ─────────────────────────────────────────────
     {
       key: 'peso',
-      header: 'Peso (kg)',
+      header: 'Peso',
       group: 'envio',
       required: true,
-      format: 'Número > 0 em kg',
-      note: 'Usado para calcular o frete.',
+      format: `Número, 0.00–${SHOPEE_LIMITS.weightMax.toFixed(2)} kg`,
+      note: 'Usado para calcular o frete. Peso incorreto pode causar recusa de entrega pelos parceiros logísticos.',
     },
     {
       key: 'comprimento',
-      header: 'Comprimento (cm)',
+      header: 'Comprimento',
       group: 'envio',
-      format: 'Número em cm',
+      categoryDependent: true,
+      format: `0–${SHOPEE_LIMITS.dimensionMax} cm`,
       note: 'Preencha comprimento, largura e altura juntos — ou deixe os três vazios.',
     },
     {
       key: 'largura',
-      header: 'Largura (cm)',
+      header: 'Largura',
       group: 'envio',
-      format: 'Número em cm',
+      categoryDependent: true,
+      format: `0–${SHOPEE_LIMITS.dimensionMax} cm`,
     },
     {
       key: 'altura',
-      header: 'Altura (cm)',
+      header: 'Altura',
       group: 'envio',
-      format: 'Número em cm',
+      categoryDependent: true,
+      format: `0–${SHOPEE_LIMITS.dimensionMax} cm`,
     },
     {
       key: 'prazo_envio',
-      header: 'Prazo de Envio (dias)',
+      header: 'Prazo de Postagem para Encomenda',
       group: 'envio',
       format: 'Inteiro (dias)',
-      note: 'Deixe vazio para o padrão de 2 dias.',
+      note: 'Só se aplica a produtos vendidos como encomenda. Vazio = padrão de 2 dias.',
+    },
+    // ── Canais logísticos (específicos da loja) ─────────────────────────
+    {
+      key: 'canal_xpress_cpf',
+      header: 'Shopee Xpress CPF',
+      group: 'canal',
+      categoryDependent: true,
+      format: '"Ativar" ou "Off"',
+      note: 'Ative pelo menos um canal por produto — os nomes/qtd. de canais variam por loja; confira os exatos no arquivo oficial baixado da sua conta.',
+    },
+    {
+      key: 'canal_retirada_comprador',
+      header: 'Retirada pelo Comprador',
+      group: 'canal',
+      categoryDependent: true,
+      format: '"Ativar" ou "Off"',
+      note: 'Ative pelo menos um canal por produto.',
+    },
+    // ── Fiscal / NF-e (Brasil) ───────────────────────────────────────────
+    {
+      key: 'ncm',
+      header: 'NCM',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: '8 dígitos',
+      note: 'Nomenclatura Comum do Mercosul.',
+    },
+    {
+      key: 'cfop_mesmo_estado',
+      header: 'CFOP (Mesmo Estado)',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Código sugerido pela Shopee para o NCM',
+      note: 'Usado quando vendedor e comprador estão no mesmo estado.',
+    },
+    {
+      key: 'cfop_outro_estado',
+      header: 'CFOP (Outro Estado)',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Código sugerido pela Shopee para o NCM',
+      note: 'Usado quando vendedor e comprador estão em estados diferentes.',
+    },
+    {
+      key: 'origem',
+      header: 'Origem',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Código de origem (0–8)',
+    },
+    {
+      key: 'csosn',
+      header: 'CSOSN',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Código de Situação Operacional do Simples Nacional',
+    },
+    {
+      key: 'cest',
+      header: 'CEST',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Conforme o NCM',
+    },
+    {
+      key: 'unidade_medida',
+      header: 'Unidade de Medida',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Unidade válida (ex.: UNI, CX, KG)',
+    },
+    {
+      key: 'cst_pis_cofins',
+      header: 'CST PIS/Cofins',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Um dos códigos da lista oficial',
+    },
+    {
+      key: 'pct_tributos',
+      header: '% total de tributos federais, estaduais e municipais',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Percentual, até 2 casas decimais',
+      note: 'Lei da Transparência Fiscal (IBPT).',
+    },
+    {
+      key: 'tipo_operacao',
+      header: 'Tipo de Operação',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Opção da lista suspensa',
+    },
+    {
+      key: 'ex_tipi',
+      header: 'EX TIPI (tabela de exceções IPI)',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Código de exceção, quando o NCM exigir',
+    },
+    {
+      key: 'fci_num',
+      header: 'Nr. de controle da FCI',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Ficha de Conteúdo de Importação',
+    },
+    {
+      key: 'recopi_num',
+      header: 'Nr. RECOPI',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Registro de Controle das Operações com Papel Imune',
+    },
+    {
+      key: 'info_adicional',
+      header: 'Informações adicionais do produto',
+      group: 'fiscal',
+      categoryDependent: true,
+      format: 'Texto livre para a Nota Fiscal',
+    },
+    // ── Item agrupável ───────────────────────────────────────────────────
+    {
+      key: 'produto_agrupavel',
+      header: 'Produto é um item agrupável',
+      group: 'agrupado',
+      categoryDependent: true,
+      format: 'Opção da lista suspensa (Sim/Não)',
+      note: 'Ex.: uma caixa com 6 pacotes de 6 latas cada é um item agrupável.',
+    },
+    {
+      key: 'gtin_unidade_tributavel',
+      header: 'GTIN da Unidade Tributável',
+      group: 'agrupado',
+      categoryDependent: true,
+      format: 'Código GTIN/SSCC',
+    },
+    {
+      key: 'qtd_unidade_tributavel',
+      header: 'Quantidade da Unidade Tributável',
+      group: 'agrupado',
+      categoryDependent: true,
+      format: 'Inteiro',
+      note: 'Ex.: pacote com 6 latas → 6.',
+    },
+    {
+      key: 'unidade_medida_agrupavel',
+      header: 'Unidade de medida do item agrupável',
+      group: 'agrupado',
+      categoryDependent: true,
+      format: 'Unidade (ex.: UNI)',
     },
     // ── Informações de Mídia ─────────────────────────────────────────────
     ...photoColumns(),
   ],
 };
 
-/** Rótulo da linha de instrução "obrigatoriedade" para uma coluna. */
+/**
+ * Rótulo da linha de instrução "obrigatoriedade" para uma coluna — usa o
+ * mesmo vocabulário de 3 níveis da Shopee (Obrigatório / Condicional
+ * obrigatório / Opcional), como aparece na linha 4 do arquivo oficial.
+ */
 export function requirementLabel(col: ShopeeColumn): string {
   if (col.required) return 'Obrigatório';
-  if (col.requiredForVariations) return 'Obrigatório p/ variações';
-  if (col.categoryDependent) return 'Depende da categoria';
+  if (col.requiredForVariations || col.categoryDependent) return 'Condicional obrigatório';
   return 'Opcional';
 }
 
-/** Tokens conhecidos de cabeçalho → chave interna (usado ao ler o arquivo oficial). */
+/**
+ * Tokens conhecidos de cabeçalho → chave interna (usado ao ler o arquivo
+ * oficial). ORDEM IMPORTA: `matchHeaderKey` devolve a primeira chave cujo
+ * token bate como substring do cabeçalho normalizado — por isso aliases mais
+ * específicos (ex.: "gtin da unidade tributável") vêm antes dos genéricos
+ * que são substring deles (ex.: "gtin"), senão o específico nunca seria
+ * alcançado.
+ */
 const HEADER_ALIASES: Array<{ key: string; tokens: string[] }> = [
   { key: 'categoria', tokens: ['categoria', 'category', 'et_title_category'] },
   {
@@ -299,6 +528,8 @@ const HEADER_ALIASES: Array<{ key: string; tokens: string[] }> = [
   {
     key: 'var_integracao',
     tokens: [
+      'número de integração de variação',
+      'numero de integracao de variacao',
       'integração da variação',
       'integracao da variacao',
       'variation integration',
@@ -327,15 +558,60 @@ const HEADER_ALIASES: Array<{ key: string; tokens: string[] }> = [
     tokens: ['opção para variação 2', 'opcao para variacao 2', 'option for variation 2'],
   },
   { key: 'preco', tokens: ['preço', 'preco', 'price'] },
-  { key: 'estoque', tokens: ['estoque', 'stock', 'quantidade'] },
-  { key: 'sku_pai', tokens: ['sku pai', 'parent sku', 'sku principal'] },
-  { key: 'sku', tokens: ['sku', 'código', 'codigo'] },
+  { key: 'estoque', tokens: ['estoque', 'stock'] },
+  { key: 'sku_pai', tokens: ['sku principal', 'sku pai', 'parent sku'] },
+  // Específico ANTES do genérico "gtin" (senão nunca seria alcançado).
+  {
+    key: 'gtin_unidade_tributavel',
+    tokens: ['gtin da unidade tributável', 'gtin da unidade tributavel'],
+  },
+  { key: 'gtin', tokens: ['gtin', 'ean'] },
+  { key: 'ids_compatibilidade', tokens: ['ids de compatibilidade', 'compatibilidade'] },
+  { key: 'sku', tokens: ['sku'] },
+  { key: 'tabela_medidas_id', tokens: ['template da tabela de medidas', 'tabela de medidas'] },
+  { key: 'imagem_tamanhos', tokens: ['imagem de tamanhos'] },
+  { key: 'foto_capa', tokens: ['imagem de capa', 'foto de capa', 'cover image', 'foto capa'] },
   { key: 'peso', tokens: ['peso', 'weight'] },
   { key: 'comprimento', tokens: ['comprimento', 'length'] },
   { key: 'largura', tokens: ['largura', 'width'] },
   { key: 'altura', tokens: ['altura', 'height'] },
-  { key: 'prazo_envio', tokens: ['prazo de envio', 'prazo de manuseio', 'days to ship', 'dts'] },
-  { key: 'foto_capa', tokens: ['foto de capa', 'cover image', 'imagem de capa', 'foto capa'] },
+  { key: 'canal_xpress_cpf', tokens: ['shopee xpress cpf'] },
+  { key: 'canal_retirada_comprador', tokens: ['retirada pelo comprador'] },
+  {
+    key: 'prazo_envio',
+    tokens: ['prazo de postagem', 'prazo de envio', 'prazo de manuseio', 'days to ship', 'dts'],
+  },
+  { key: 'ncm', tokens: ['ncm'] },
+  { key: 'cfop_mesmo_estado', tokens: ['cfop (mesmo estado)', 'cfop mesmo estado'] },
+  { key: 'cfop_outro_estado', tokens: ['cfop (outro estado)', 'cfop outro estado'] },
+  { key: 'origem', tokens: ['origem'] },
+  { key: 'csosn', tokens: ['csosn'] },
+  { key: 'cest', tokens: ['cest'] },
+  // Específico ANTES do genérico "unidade de medida".
+  {
+    key: 'unidade_medida_agrupavel',
+    tokens: ['unidade de medida do item agrupável', 'unidade de medida do item agrupavel'],
+  },
+  { key: 'unidade_medida', tokens: ['unidade de medida'] },
+  { key: 'cst_pis_cofins', tokens: ['cst pis/cofins', 'cst pis cofins', 'pis/cofins'] },
+  {
+    key: 'pct_tributos',
+    tokens: ['tributos federais, estaduais e municipais', '% total de tributos'],
+  },
+  { key: 'tipo_operacao', tokens: ['tipo de operação', 'tipo de operacao'] },
+  { key: 'ex_tipi', tokens: ['ex tipi'] },
+  { key: 'fci_num', tokens: ['controle da fci', 'nr. de controle da fci', 'fci'] },
+  { key: 'recopi_num', tokens: ['recopi'] },
+  {
+    key: 'info_adicional',
+    tokens: ['informações adicionais do produto', 'informacoes adicionais do produto'],
+  },
+  // Específico ANTES do genérico "item agrupável".
+  {
+    key: 'qtd_unidade_tributavel',
+    tokens: ['quantidade da unidade tributável', 'quantidade da unidade tributavel'],
+  },
+  { key: 'produto_agrupavel', tokens: ['item agrupável', 'item agrupavel'] },
 ];
 
 function matchHeaderKey(header: string): string | undefined {
@@ -345,10 +621,14 @@ function matchHeaderKey(header: string): string | undefined {
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
   if (!norm) return undefined;
-  // Foto 1..8
-  const foto = norm.match(/^foto\s*(\d{1,2})$/) || norm.match(/^image\s*(\d{1,2})$/);
+  // Fotos: "Foto N" / "Image N" / "Imagem (do) produto N" (rótulo real da Shopee).
+  const foto =
+    norm.match(/^foto\s*(\d{1,2})$/) ||
+    norm.match(/^image\s*(\d{1,2})$/) ||
+    norm.match(/^imagem(?:\s+do)?\s+produto\s*(\d{1,2})$/);
   if (foto) return `foto_${foto[1]}`;
-  // "sku pai" precisa casar antes de "sku": a lista já está ordenada com sku_pai antes de sku.
+  // Aliases mais específicos precisam vir antes dos genéricos que são
+  // substring deles — ver ordem comentada em HEADER_ALIASES.
   for (const alias of HEADER_ALIASES) {
     if (
       alias.tokens.some((t) => norm.includes(t.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))
@@ -361,9 +641,12 @@ function matchHeaderKey(header: string): string | undefined {
 
 /**
  * Carrega o template oficial de um .xlsx do Seller Center.
- * Heurística: procura, nas primeiras 8 linhas, a linha de cabeçalho (a que mais
- * casa com rótulos conhecidos); acima+incluindo ela ficam as instruções, os
- * dados começam na linha seguinte. Mapeia cada coluna para uma chave interna.
+ * Heurística: o arquivo real da Shopee traz várias abas (ex.: "Orientação",
+ * "Modelo", "Fazer upload do exemplo", listas ocultas) e a aba de DADOS nem
+ * sempre é a primeira — por isso escaneamos TODAS as abas, nas primeiras 8
+ * linhas de cada, e ficamos com a linha (de qualquer aba) que mais casa com
+ * rótulos conhecidos. Acima dela ficam as instruções; os dados começam na
+ * linha seguinte. Mapeia cada coluna para uma chave interna.
  *
  * É best-effort e propositalmente conservador: só é usado quando o operador
  * aponta explicitamente o arquivo oficial. Em caso de dúvida, lança e caímos no
@@ -375,34 +658,43 @@ export async function loadOfficialTemplate(path: string): Promise<ShopeeTemplate
   // @types/node 22 marca o Buffer de forma incompatível com o tipo esperado pelo
   // exceljs; o valor em runtime é o mesmo Buffer.
   await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
-  const ws = wb.worksheets[0];
-  if (!ws) throw new Error('Arquivo de template sem abas.');
+  if (!wb.worksheets.length) throw new Error('Arquivo de template sem abas.');
 
-  const scanRows = Math.min(8, ws.rowCount || 8);
-  let headerRowIdx = -1;
-  let best: { idx: number; matches: number; cells: string[] } | null = null;
+  let best: { ws: ExcelJS.Worksheet; idx: number; matches: number; cells: string[] } | null = null;
 
-  for (let r = 1; r <= scanRows; r++) {
-    const row = ws.getRow(r);
-    const cells: string[] = [];
-    let matches = 0;
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      const text = String(cell.value ?? '').trim();
-      cells[col - 1] = text;
-      if (text && matchHeaderKey(text)) matches++;
-    });
-    if (!best || matches > best.matches) best = { idx: r, matches, cells };
+  for (const ws of wb.worksheets) {
+    const scanRows = Math.min(8, ws.rowCount || 8);
+    for (let r = 1; r <= scanRows; r++) {
+      const row = ws.getRow(r);
+      const cells: string[] = [];
+      let matches = 0;
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        const text = String(cell.value ?? '').trim();
+        cells[col - 1] = text;
+        if (text && matchHeaderKey(text)) matches++;
+      });
+      if (!best || matches > best.matches) best = { ws, idx: r, matches, cells };
+    }
   }
-  if (!best || best.matches < 3) {
+  // Uma linha de cabeçalho real bate dezenas de rótulos (a aba "Modelo" tem
+  // >50 colunas); um limiar baixo deixava abas de instrução/exemplo vencerem
+  // por coincidência de 1-2 palavras soltas.
+  if (!best || best.matches < 8) {
     throw new Error(
       'Não consegui identificar a linha de cabeçalho do template oficial (poucos rótulos reconhecidos).',
     );
   }
-  headerRowIdx = best.idx;
+  const { ws, idx: headerRowIdx, cells } = best;
 
-  const columns: ShopeeColumn[] = best.cells.map((header, i) => {
+  // Evita que duas colunas reais distintas colidam na mesma chave interna
+  // (defensivo — a ordem de HEADER_ALIASES já previne isso, mas se colidir,
+  // preferimos perder o match a sobrescrever/duplicar dado entre colunas).
+  const usedKeys = new Set<string>();
+  const columns: ShopeeColumn[] = cells.map((header, i) => {
     const trimmed = (header ?? '').trim();
-    const key = matchHeaderKey(trimmed) ?? `col_${i + 1}`;
+    let key = matchHeaderKey(trimmed) ?? `col_${i + 1}`;
+    if (usedKeys.has(key)) key = `col_${i + 1}`;
+    usedKeys.add(key);
     const ref = REFERENCE_TEMPLATE_BR.columns.find((c) => c.key === key);
     return {
       key,

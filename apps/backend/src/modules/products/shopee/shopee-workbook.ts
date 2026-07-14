@@ -33,10 +33,12 @@ const HEADER_GREY = 'FFF2F2F2';
 const REJECT_RED = 'FFFCE8E6';
 
 function widthFor(col: ShopeeColumn): number {
-  if (col.key === 'descricao') return 62;
+  if (col.key === 'descricao' || col.key === 'info_adicional') return 50;
   if (col.key === 'nome') return 42;
-  if (col.key.startsWith('foto') || col.key === 'var_imagem') return 48;
-  if (col.group === 'variacao') return 22;
+  if (col.key.startsWith('foto') || col.key === 'var_imagem' || col.key === 'imagem_tamanhos')
+    return 48;
+  if (col.key === 'ids_compatibilidade') return 34;
+  if (col.group === 'variacao' || col.group === 'canal') return 22;
   if (col.note && col.note.length > 40) return 30;
   return 18;
 }

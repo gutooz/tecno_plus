@@ -117,10 +117,12 @@ describe('Shopee export — workbook', () => {
 
     const sheet = wb.getWorksheet(REFERENCE_TEMPLATE_BR.sheetName);
     expect(sheet).toBeDefined();
-    // Linha 1 = cabeçalhos exatos; dados começam na linha 5.
+    // Linha 1 = cabeçalhos exatos (iguais aos do arquivo oficial); dados começam na linha 5.
     expect(sheet!.getRow(1).getCell(1).value).toBe('Categoria');
-    expect(sheet!.getRow(1).getCell(2).value).toBe('Nome do produto');
-    expect(sheet!.getRow(2).getCell(1).value).toBe('Obrigatório');
+    expect(sheet!.getRow(1).getCell(2).value).toBe('Nome do Produto');
+    // Categoria é "Opcional" no arquivo oficial atual (Nome é que é obrigatório).
+    expect(sheet!.getRow(2).getCell(1).value).toBe('Opcional');
+    expect(sheet!.getRow(2).getCell(2).value).toBe('Obrigatório');
     expect(String(sheet!.getRow(5).getCell(2).value)).toContain('Jogo de Copo Imperial');
 
     // Abas de relatório presentes.

@@ -37,3 +37,6 @@ coverage/
 # Temp
 tmp/
 *.tmp
+
+# Templates oficiais baixados do Seller Center (têm ID da loja embutido — não versionar)
+apps/backend/local-templates/
