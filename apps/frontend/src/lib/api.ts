@@ -84,6 +84,18 @@ function goToLogin() {
   if (typeof window !== 'undefined') window.location.href = '/login';
 }
 
+/** Erro tipado p/ o React Query distinguir 401 (sessão morta) de falha transitória
+ * e não ficar reexecutando a query em loop contra um backend que já rejeitou o token. */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const token = getToken();
   const headers = new Headers(options.headers);
@@ -92,16 +104,20 @@ async function request<T>(path: string, options: RequestInit = {}, isRetry = fal
 
   const res = await fetch(`${BASE}/api${path}`, { ...options, headers });
 
-  if (res.status === 401 && !isRetry && getRefreshToken()) {
-    const newToken = await ensureFreshToken();
-    if (newToken) return request<T>(path, options, true);
+  if (res.status === 401) {
+    if (!isRetry && getRefreshToken()) {
+      const newToken = await ensureFreshToken();
+      if (newToken) return request<T>(path, options, true);
+    }
+    // Sem refresh token ou refresh também falhou: sessão está morta de vez —
+    // manda pro login em vez de deixar a UI presa mostrando dado vazio.
     goToLogin();
-    throw new Error('Sessão expirada — faça login novamente.');
+    throw new ApiError(401, 'Sessão expirada — faça login novamente.');
   }
 
   if (!res.ok) {
     const message = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${res.status}: ${message}`);
+    throw new ApiError(res.status, `API ${res.status}: ${message}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -126,9 +142,13 @@ export const api = {
     if (res.status === 401 && getRefreshToken() && (await ensureFreshToken())) {
       res = await fetchOnce();
     }
+    if (res.status === 401) {
+      goToLogin();
+      throw new ApiError(401, 'Sessão expirada — faça login novamente.');
+    }
     if (!res.ok) {
       const message = await res.text().catch(() => res.statusText);
-      throw new Error(`API ${res.status}: ${message}`);
+      throw new ApiError(res.status, `API ${res.status}: ${message}`);
     }
     return res.blob();
   },
@@ -167,8 +187,10 @@ export const api = {
 
     return attempt().catch(async (err) => {
       const is401 = err instanceof Error && /^Upload 401/.test(err.message);
-      if (is401 && getRefreshToken() && (await ensureFreshToken())) return attempt();
-      throw err;
+      if (!is401) throw err;
+      if (getRefreshToken() && (await ensureFreshToken())) return attempt();
+      goToLogin();
+      throw new ApiError(401, 'Sessão expirada — faça login novamente.');
     });
   },
 };
