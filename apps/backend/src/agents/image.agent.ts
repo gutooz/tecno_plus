@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { ProductImageSet } from '@tecnoplus/shared';
 import { StorageService } from '../modules/storage/storage.service';
 import { fetchImageAsBase64 } from '../modules/ai/ai.utils';
+import { IMAGE_PROMPTS } from './prompts';
 
 /**
  * AGENTE 4 — Image Agent.
@@ -20,27 +21,6 @@ import { fetchImageAsBase64 } from '../modules/ai/ai.utils';
 export class ImageAgent {
   private readonly logger = new Logger(ImageAgent.name);
 
-  // Preserva o produto de forma idêntica; só o fundo é limpo/trocado.
-  private static readonly KEEP =
-    'Keep ONLY the product exactly as it is: do not change its shape, colors, ' +
-    'proportions, text, logos or labels. Do not add or remove anything on the ' +
-    'product. Center it, add a subtle natural soft shadow. Square 1:1 e-commerce ' +
-    'product photo, sharp focus, high quality.';
-  private static readonly SCENES: { key: string; prompt: string }[] = [
-    {
-      key: 'shopee-1',
-      prompt: `Remove the background completely and replace it with a pure solid white background (#FFFFFF). ${ImageAgent.KEEP}`,
-    },
-    {
-      key: 'shopee-2',
-      prompt: `Remove the background and replace it with a clean minimal light‑gray studio backdrop with a soft gradient and a gentle reflection under the product. ${ImageAgent.KEEP}`,
-    },
-    {
-      key: 'shopee-3',
-      prompt: `Remove the background and place the product on an elegant, softly lit neutral surface with tasteful, uncluttered styling; the product stays the clear focus. ${ImageAgent.KEEP}`,
-    },
-  ];
-
   constructor(
     private readonly storage: StorageService,
     private readonly config: ConfigService,
@@ -55,9 +35,9 @@ export class ImageAgent {
     // várias chamadas simultâneas ao Gemini.
     const shopee: string[] = [];
     let cleanMain: Buffer | null = null;
-    for (const scene of ImageAgent.SCENES) {
+    for (const scene of IMAGE_PROMPTS) {
       const generated = await this.geminiScene(input, mediaType, scene.prompt);
-      if (!generated && scene === ImageAgent.SCENES[0]) {
+      if (!generated && scene === IMAGE_PROMPTS[0]) {
         this.logger.warn(
           `Recorte via Gemini indisponível p/ ${productId} — usando fallback branco.`,
         );
