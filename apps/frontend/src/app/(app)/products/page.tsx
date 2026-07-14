@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Copy, Trash2, Pencil, Send } from 'lucide-react';
+import { Search, Copy, Trash2, Pencil, Send, Download, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { DEMO_PRODUCTS } from '@/lib/demo-data';
 import { Button, Card, Input, StatusPill } from '@/components/ui';
@@ -46,6 +46,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [publishing, setPublishing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, page],
@@ -100,6 +101,23 @@ export default function ProductsPage() {
     }
   }
 
+  async function exportSelected() {
+    if (!selected.size) return;
+    setExporting(true);
+    try {
+      const ids = [...selected].join(',');
+      const blob = await api.download(`/products/export/shopee?ids=${encodeURIComponent(ids)}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `produtos-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       {data?.demo && (
@@ -117,13 +135,25 @@ export default function ProductsPage() {
               : `${data?.total ?? 0} itens no catálogo`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           {selected.size > 0 && (
-            <Button size="sm" disabled={publishing} onClick={publishSelected}>
-              <Send size={15} />
-              {publishing ? 'Publicando...' : `Publicar (${selected.size})`}
-            </Button>
+            <>
+              <Button variant="outline" size="sm" disabled={exporting} onClick={exportSelected}>
+                <Download size={15} />
+                {exporting ? 'Gerando...' : `Excel (${selected.size})`}
+              </Button>
+              <Button size="sm" disabled={publishing} onClick={publishSelected}>
+                <Send size={15} />
+                {publishing ? 'Publicando...' : `Publicar (${selected.size})`}
+              </Button>
+            </>
           )}
+          <Link href="/lote" className="shrink-0">
+            <Button size="sm" variant="outline">
+              <Plus size={15} />
+              Novo produto
+            </Button>
+          </Link>
           <div className="relative w-full max-w-xs">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input
@@ -139,7 +169,81 @@ export default function ProductsPage() {
         </div>
       </header>
 
-      <Card className="overflow-hidden p-0">
+      {/* Mobile: lista em cards — uma tabela de 9 colunas não cabe numa tela de celular */}
+      <div className="space-y-2 md:hidden">
+        {isLoading && <p className="p-6 text-center text-sm text-muted">Carregando…</p>}
+        {data?.items.map((p) => (
+          <Card key={p._id} className="p-3">
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-1.5 shrink-0"
+                checked={selected.has(p._id)}
+                onChange={() => toggleSelected(p._id)}
+                aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
+              />
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                {(p.images?.thumbnail || p.images?.original) && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.images.thumbnail || p.images.original}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{p.vision?.name ?? p.internalSku}</p>
+                    <p className="truncate text-xs text-muted">
+                      {p.vision?.category ?? p.vision?.brand ?? '—'}
+                    </p>
+                  </div>
+                  <StatusPill status={p.status} />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted">
+                    Compra <b className="text-fg">{formatBRL(p.pricing?.purchasePrice)}</b>
+                  </span>
+                  <span className="text-muted">
+                    Venda <b className="text-fg">{formatBRL(p.pricing?.suggestedPrice)}</b>
+                  </span>
+                  <span className="text-success">{formatPercent(p.pricing?.marginPercent)}</span>
+                </div>
+                <div className="mt-2 flex items-center gap-1">
+                  <Link
+                    href={`/products/${p._id}`}
+                    className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-fg"
+                  >
+                    <Pencil size={15} />
+                  </Link>
+                  <button
+                    onClick={() => duplicate(p._id)}
+                    className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-fg"
+                  >
+                    <Copy size={15} />
+                  </button>
+                  <button
+                    onClick={() => remove(p._id)}
+                    className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-danger"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+        {data && data.items.length === 0 && !isLoading && (
+          <p className="p-8 text-center text-sm text-muted">
+            Nenhum produto. Comece pelo <b>Envio em Lote</b>.
+          </p>
+        )}
+      </div>
+
+      {/* Desktop/tablet: tabela completa */}
+      <Card className="hidden overflow-hidden p-0 md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -239,7 +343,7 @@ export default function ProductsPage() {
               {data && data.items.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={9} className="p-8 text-center text-muted">
-                    Nenhum produto. Comece pelo <b>Upload</b>.
+                    Nenhum produto. Comece pelo <b>Envio em Lote</b>.
                   </td>
                 </tr>
               )}

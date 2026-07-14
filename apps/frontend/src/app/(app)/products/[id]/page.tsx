@@ -15,12 +15,13 @@ interface ProductDetail {
   status: string;
   aiConfidence: number;
   multipleProductsDetected?: boolean;
-  vision: Record<string, unknown> & { name?: string; brand?: string };
+  vision: Record<string, unknown> & { name?: string; brand?: string; category?: string };
   market?: { averagePrice?: number; minPrice?: number; maxPrice?: number; competition?: string };
   content?: {
     title?: string;
     description?: string;
     longDescription?: string;
+    category?: string;
     seo?: { slug?: string; metaDescription?: string; keywords?: string[] };
     technicalSpecs?: Record<string, string>;
   };
@@ -33,10 +34,19 @@ interface ProductDetail {
   images?: { original?: string; hd?: string; square?: string; webp?: string; thumbnail?: string };
 }
 
+interface EditableFields {
+  title: string;
+  description: string;
+  category: string;
+  purchasePrice: string;
+  salePrice: string;
+}
+
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const qc = useQueryClient();
-  const [title, setTitle] = useState<string | undefined>();
+  const [edit, setEdit] = useState<EditableFields | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const { data: p, isLoading } = useQuery({
     queryKey: ['product', id],
@@ -51,11 +61,48 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       ['processing', 'uploaded'].includes(q.state.data?.status ?? '') ? 3000 : false,
   });
 
+  const fields: EditableFields = edit ?? {
+    title: p?.content?.title ?? p?.vision?.name ?? '',
+    description: p?.content?.longDescription ?? p?.content?.description ?? '',
+    category: p?.content?.category ?? p?.vision?.category ?? '',
+    purchasePrice: p?.pricing?.purchasePrice != null ? String(p.pricing.purchasePrice) : '',
+    salePrice: p?.pricing?.suggestedPrice != null ? String(p.pricing.suggestedPrice) : '',
+  };
+
+  function updateField(field: keyof EditableFields, value: string) {
+    setEdit({ ...fields, [field]: value });
+  }
+
   async function save() {
-    await api.put(`/products/${id}`, {
-      content: { ...p?.content, title: title ?? p?.content?.title },
-    });
-    qc.invalidateQueries({ queryKey: ['product', id] });
+    setSaving(true);
+    try {
+      const purchasePrice = Number(fields.purchasePrice.replace(',', '.'));
+      const salePrice = Number(fields.salePrice.replace(',', '.'));
+      await api.put(`/products/${id}`, {
+        'content.title': fields.title,
+        'content.description': fields.description,
+        'content.longDescription': fields.description,
+        'content.category': fields.category,
+        'pricing.purchasePrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
+        'pricing.suggestedPrice': Number.isFinite(salePrice) ? salePrice : 0,
+        'pricing.profit':
+          Number.isFinite(purchasePrice) && Number.isFinite(salePrice)
+            ? salePrice - purchasePrice
+            : 0,
+        'pricing.marginPercent':
+          Number.isFinite(salePrice) && salePrice > 0 && Number.isFinite(purchasePrice)
+            ? (salePrice - purchasePrice) / salePrice
+            : 0,
+        'pricing.roi':
+          Number.isFinite(purchasePrice) && purchasePrice > 0 && Number.isFinite(salePrice)
+            ? (salePrice - purchasePrice) / purchasePrice
+            : 0,
+      });
+      setEdit(null);
+      qc.invalidateQueries({ queryKey: ['product', id] });
+    } finally {
+      setSaving(false);
+    }
   }
   async function publish() {
     await api.post(`/products/${id}/publish`);
@@ -135,31 +182,66 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           <Card>
-            <p className="mb-3 text-sm font-medium">Precificação</p>
+            <p className="mb-3 text-sm font-medium">Margem calculada</p>
             <div className="grid grid-cols-2 gap-3">
-              <Stat label="Compra" value={formatBRL(p.pricing?.purchasePrice)} />
-              <Stat label="Venda sugerida" value={formatBRL(p.pricing?.suggestedPrice)} big />
               <Stat label="Margem" value={formatPercent(p.pricing?.marginPercent)} />
               <Stat label="ROI" value={formatPercent(p.pricing?.roi)} />
             </div>
+            <p className="mt-2 text-xs text-muted">
+              Recalculada ao salvar, a partir dos preços ao lado.
+            </p>
           </Card>
         </div>
 
         <div className="space-y-4">
           <Card>
-            <p className="mb-3 text-sm font-medium">Conteúdo (editável)</p>
-            <label className="text-xs text-muted">Título</label>
-            <Input
-              defaultValue={p.content?.title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="mb-3 mt-1"
-            />
-            <label className="text-xs text-muted">Descrição</label>
-            <p className="mt-1 rounded-xl bg-surface-2 p-3 text-sm">
-              {p.content?.longDescription ?? p.content?.description ?? '—'}
-            </p>
-            <Button size="sm" className="mt-3" onClick={save}>
-              Salvar alterações
+            <p className="mb-3 text-sm font-medium">Dados do produto (editável)</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block text-xs text-muted">Título</span>
+                <Input
+                  value={fields.title}
+                  onChange={(e) => updateField('title', e.target.value)}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-muted">Categoria</span>
+                <Input
+                  value={fields.category}
+                  onChange={(e) => updateField('category', e.target.value)}
+                />
+              </label>
+              <div />
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-muted">Preço de compra</span>
+                <Input
+                  inputMode="decimal"
+                  value={fields.purchasePrice}
+                  onChange={(e) => updateField('purchasePrice', e.target.value)}
+                  placeholder="18,50"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-muted">Preço de venda</span>
+                <Input
+                  inputMode="decimal"
+                  value={fields.salePrice}
+                  onChange={(e) => updateField('salePrice', e.target.value)}
+                  placeholder="39,90"
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block text-xs text-muted">Descrição</span>
+                <textarea
+                  value={fields.description}
+                  onChange={(e) => updateField('description', e.target.value)}
+                  rows={4}
+                  className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+            </div>
+            <Button size="sm" className="mt-4" disabled={saving} onClick={save}>
+              {saving ? 'Salvando...' : 'Salvar alterações'}
             </Button>
           </Card>
 
