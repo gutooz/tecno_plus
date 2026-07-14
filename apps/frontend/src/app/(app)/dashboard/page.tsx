@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Package, CheckCircle2, Clock, AlertTriangle, Eye, Timer, Cpu } from 'lucide-react';
 import { api } from '@/lib/api';
-import { DEMO_DASHBOARD } from '@/lib/demo-data';
 import { Card } from '@/components/ui';
 
 interface Dashboard {
@@ -18,7 +17,6 @@ interface Dashboard {
   averageAgentDurationMs: number;
   aiRunning: number;
   queues: { queue: string; waiting: number; active: number; failed: number }[];
-  demo?: boolean;
 }
 
 const CARDS = [
@@ -32,24 +30,12 @@ const CARDS = [
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
-    queryFn: async () => {
-      try {
-        return await api.get<Dashboard>('/dashboard');
-      } catch {
-        return { ...(DEMO_DASHBOARD as Dashboard), demo: true };
-      }
-    },
+    queryFn: () => api.get<Dashboard>('/dashboard'),
     refetchInterval: 5000,
   });
 
   return (
     <div className="mx-auto max-w-6xl">
-      {data?.demo && (
-        <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-warning">
-          Modo demonstração (offline) — dados do lote Brás (11 produtos). Suba o backend + MongoDB
-          para métricas ao vivo.
-        </div>
-      )}
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted">Visão geral do catálogo em tempo real</p>

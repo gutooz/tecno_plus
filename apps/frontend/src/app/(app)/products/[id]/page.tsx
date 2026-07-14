@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { ArrowLeft, Send } from 'lucide-react';
 import { api } from '@/lib/api';
-import { DEMO_PRODUCTS } from '@/lib/demo-data';
 import { Button, Card, Input, StatusPill } from '@/components/ui';
 import { formatBRL, formatPercent } from '@/lib/utils';
 
@@ -50,13 +49,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
   const { data: p, isLoading } = useQuery({
     queryKey: ['product', id],
-    queryFn: async () => {
-      try {
-        return await api.get<ProductDetail>(`/products/${id}`);
-      } catch {
-        return (DEMO_PRODUCTS as ProductDetail[]).find((x) => x._id === id) ?? null;
-      }
-    },
+    queryFn: () => api.get<ProductDetail>(`/products/${id}`),
     refetchInterval: (q) =>
       ['processing', 'uploaded'].includes(q.state.data?.status ?? '') ? 3000 : false,
   });
