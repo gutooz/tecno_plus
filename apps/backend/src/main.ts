@@ -17,7 +17,7 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   app.use(helmet());
-  app.enableCors({ origin: config.get<string>('security.corsOrigin'), credentials: true });
+  app.enableCors({ origin: config.get<string[]>('security.corsOrigin'), credentials: true });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }),

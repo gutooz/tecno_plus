@@ -66,7 +66,11 @@ export default () => ({
   },
 
   security: {
-    corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+    // Aceita 1+ origens separadas por vírgula (ex.: domínio próprio + onrender.com).
+    corsOrigin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     rateLimitTtl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
     rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
   },
