@@ -31,6 +31,12 @@ interface PendingApiItem {
   images?: { original?: string };
 }
 
+interface PendingListResponse {
+  items: PendingApiItem[];
+  page: number;
+  pages: number;
+}
+
 /**
  * Envio em Lote: sobe N fotos de uma vez, elas ficam aqui aguardando
  * título/preço (uma a uma ou todas de uma vez com "Salvar todos"). Ao salvar,
@@ -45,19 +51,38 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
   const [uploading, setUploading] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!previewUrl) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPreviewUrl(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewUrl]);
 
   // Carrega o que já estava pendente (enviado antes, ainda sem título/preço)
-  // para o Envio em Lote sobreviver a um F5 ou a voltar depois.
+  // para o Envio em Lote sobreviver a um F5 ou a voltar depois. O backend
+  // limita cada página a 100 itens — pagina até acabar em vez de truncar
+  // silenciosamente em 100, senão um lote maior que isso "some" da tela.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get<{ items: PendingApiItem[] }>(
-          '/products?status=uploaded&limit=100',
-        );
-        if (cancelled) return;
+        const items: PendingApiItem[] = [];
+        let page = 1;
+        let pages = 1;
+        do {
+          const res = await api.get<PendingListResponse>(
+            `/products?status=uploaded&limit=100&page=${page}`,
+          );
+          if (cancelled) return;
+          items.push(...res.items);
+          pages = res.pages;
+          page += 1;
+        } while (page <= pages);
+
         setPending(
-          res.items.map((it) => ({
+          items.map((it) => ({
             id: it._id,
             url: it.images?.original ?? '',
             internalSku: it.internalSku,
@@ -328,10 +353,16 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             {pending.map((product) => (
               <Card key={product.id} className="space-y-3 p-3.5">
                 <div className="flex items-center gap-3">
-                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60">
+                  <button
+                    type="button"
+                    onClick={() => product.url && setPreviewUrl(product.url)}
+                    disabled={!product.url}
+                    className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60 transition-transform duration-150 ease-out-soft active:scale-95 disabled:pointer-events-none"
+                    aria-label="Ver foto ampliada"
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={product.url} alt="" className="h-full w-full object-cover" />
-                  </div>
+                  </button>
                   <div className="min-w-0 flex-1">
                     <Input
                       value={product.name}
@@ -405,10 +436,16 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                       className="border-b border-border/60 transition-colors duration-150 last:border-0 hover:bg-surface-2/50"
                     >
                       <td className="py-3 pl-4 pr-3">
-                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60">
+                        <button
+                          type="button"
+                          onClick={() => product.url && setPreviewUrl(product.url)}
+                          disabled={!product.url}
+                          className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60 transition-transform duration-150 ease-out-soft hover:scale-105 active:scale-95 disabled:pointer-events-none"
+                          aria-label="Ver foto ampliada"
+                        >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={product.url} alt="" className="h-full w-full object-cover" />
-                        </div>
+                        </button>
                       </td>
                       <td className="min-w-48 px-3 py-3">
                         <Input
@@ -466,6 +503,43 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
           Nada aguardando no momento — envie fotos acima para começar um lote.
         </p>
       )}
+
+      <AnimatePresence>
+        {previewUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setPreviewUrl(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-h-[85vh] max-w-[min(90vw,32rem)] overflow-hidden rounded-3xl bg-surface shadow-lg"
+            >
+              <button
+                type="button"
+                onClick={() => setPreviewUrl(null)}
+                className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors duration-150 hover:bg-black/70"
+                aria-label="Fechar"
+              >
+                <X size={18} />
+              </button>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewUrl}
+                alt="Foto do produto"
+                className="max-h-[85vh] w-full object-contain"
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
