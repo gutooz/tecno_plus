@@ -29,15 +29,24 @@ export class ContentAgent {
     market?: MarketResearchResult,
   ): Promise<ContentOutcome> {
     const context = JSON.stringify({ vision, market: market ?? null }, null, 2);
-    const res = await this.ai.generateText<GeneratedContent>({
+    const request = {
       json: true,
-      maxTokens: 2000,
+      maxTokens: 4096,
       temperature: 0.6,
       messages: [
-        { role: 'system', content: CONTENT_PROMPT },
-        { role: 'user', content: `Dados do produto:\n${context}` },
+        { role: 'system' as const, content: CONTENT_PROMPT },
+        { role: 'user' as const, content: `Dados do produto:\n${context}` },
       ],
-    });
+    };
+
+    // O modelo às vezes devolve JSON inválido (aspas/escape); nesse caso `data`
+    // vem null e o normalize cairia no fallback (descrição = título). Tenta mais
+    // uma vez antes de degradar — barato e evita anúncio sem descrição.
+    let res = await this.ai.generateText<GeneratedContent>(request);
+    if (!res.data) {
+      this.logger.warn('Conteúdo sem JSON válido na 1ª tentativa; repetindo.');
+      res = await this.ai.generateText<GeneratedContent>(request);
+    }
 
     const content = this.normalize(res.data, vision);
     return {

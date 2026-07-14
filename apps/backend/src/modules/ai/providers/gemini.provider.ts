@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GenerationConfig, GoogleGenerativeAI } from '@google/generative-ai';
 import {
   AICompletion,
   AIProvider,
@@ -26,14 +26,24 @@ export class GeminiProvider implements AIProvider {
   async generateText<T = string>(req: AITextRequest): Promise<AICompletion<T>> {
     const modelName = req.model ?? this.config.textModel;
     const system = req.messages.find((m) => m.role === 'system')?.content;
+    // `gemini-flash-latest` é um modelo "thinking": por padrão gasta tokens
+    // pensando ANTES de responder, e esse consumo entra no maxOutputTokens.
+    // Em respostas JSON longas (ex.: Content Agent) isso estourava o limite e
+    // truncava o JSON (finishReason MAX_TOKENS) — o parse falhava e o conteúdo
+    // caía no fallback (descrição = título). Para texto estruturado desligamos
+    // o thinking (thinkingBudget: 0) e damos folga no limite de saída.
+    const generationConfig: GenerationConfig & {
+      thinkingConfig?: { thinkingBudget?: number };
+    } = {
+      temperature: req.temperature ?? 0.4,
+      maxOutputTokens: req.maxTokens ?? 4096,
+      responseMimeType: req.json ? 'application/json' : undefined,
+      thinkingConfig: { thinkingBudget: 0 },
+    };
     const model = this.client.getGenerativeModel({
       model: modelName,
       systemInstruction: system,
-      generationConfig: {
-        temperature: req.temperature ?? 0.4,
-        maxOutputTokens: req.maxTokens ?? 1500,
-        responseMimeType: req.json ? 'application/json' : undefined,
-      },
+      generationConfig,
     });
 
     const prompt = req.messages

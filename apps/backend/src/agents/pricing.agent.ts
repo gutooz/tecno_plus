@@ -29,4 +29,21 @@ export class PricingAgent {
     });
     return { purchasePrice, ...computed };
   }
+
+  /**
+   * Preço de venda definido pelo OPERADOR (ex.: Envio em Lote): mantém o valor
+   * digitado e apenas deriva lucro, margem, ROI e markup a partir dele — sem
+   * recalcular/sobrescrever o preço com o markup automático.
+   */
+  withSalePrice(purchasePrice: number, salePrice: number): PricingResult {
+    const profit = Number((salePrice - purchasePrice).toFixed(2));
+    return {
+      purchasePrice,
+      suggestedPrice: salePrice,
+      markupApplied: purchasePrice > 0 ? Number((salePrice / purchasePrice - 1).toFixed(4)) : 0,
+      profit,
+      marginPercent: salePrice > 0 ? Number(((profit / salePrice) * 100).toFixed(2)) : 0,
+      roi: purchasePrice > 0 ? Number(((profit / purchasePrice) * 100).toFixed(2)) : 0,
+    };
+  }
 }

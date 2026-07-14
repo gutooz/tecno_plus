@@ -51,4 +51,16 @@ describe('PricingAgent', () => {
     expect(r.suggestedPrice).toBeGreaterThan(80);
     expect(Number((r.suggestedPrice % 1).toFixed(2))).toBe(0.9);
   });
+
+  it('preserva o preço de venda do operador e só deriva as métricas', () => {
+    const agent = new PricingAgent(config);
+    const r = agent.withSalePrice(124.02, 199.9);
+    // Mantém EXATAMENTE o preço digitado, sem aplicar markup nem ",90".
+    expect(r.suggestedPrice).toBe(199.9);
+    expect(r.purchasePrice).toBe(124.02);
+    expect(r.profit).toBeCloseTo(75.88, 2);
+    // marginPercent/roi em escala 0–100 (como computePrice), para o formatPercent.
+    expect(r.marginPercent).toBeCloseTo(37.96, 1);
+    expect(r.roi).toBeCloseTo(61.18, 1);
+  });
 });

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ImagePlus, Save, Trash2, UploadCloud, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, Input } from '@/components/ui';
+import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
 
 interface Preview {
@@ -183,15 +184,16 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted">
-          {pending.length
+      <PageHeader
+        title={title}
+        subtitle={
+          pending.length
             ? `${pending.length} produto(s) aguardando título e preço`
-            : 'Envie as fotos dos produtos — depois preencha título e preço de cada um'}
-        </p>
-      </header>
+            : 'Envie as fotos dos produtos — depois preencha título e preço de cada um'
+        }
+      />
 
+      {/* Dropzone */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -200,14 +202,24 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          'flex min-h-40 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-6 text-center transition',
-          dragging ? 'border-primary bg-primary/5' : 'border-border bg-surface',
+          'flex min-h-44 flex-col items-center justify-center gap-3 rounded-4xl border-2 border-dashed p-8 text-center transition-all duration-200 ease-out-soft',
+          dragging
+            ? 'border-primary bg-primary/[0.06] scale-[1.005]'
+            : 'border-border bg-surface hover:border-border-strong hover:bg-surface-2/50',
         )}
       >
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-          <UploadCloud size={22} />
+        <div
+          className={cn(
+            'flex h-12 w-12 items-center justify-center rounded-2xl transition-transform duration-200 ease-out-soft',
+            dragging ? 'scale-110 bg-primary/15 text-primary' : 'bg-primary/10 text-primary',
+          )}
+        >
+          <UploadCloud size={23} />
         </div>
-        <p className="text-sm font-medium">Arraste as fotos aqui ou</p>
+        <div>
+          <p className="text-sm font-medium">Arraste as fotos aqui</p>
+          <p className="mt-0.5 text-xs text-muted">ou selecione do seu computador</p>
+        </div>
         <label>
           <input
             type="file"
@@ -216,7 +228,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             className="hidden"
             onChange={(e) => e.target.files && addFiles(e.target.files)}
           />
-          <span className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-fg">
+          <span className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-fg shadow-soft transition-all duration-200 ease-out-soft hover:shadow-md hover:brightness-[1.06] active:scale-[0.97]">
             <ImagePlus size={15} />
             Selecionar fotos
           </span>
@@ -224,10 +236,11 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
       </div>
 
       {previews.length > 0 && (
-        <section className="mt-4">
+        <section className="mt-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted">
-              {previews.length} foto(s) selecionada(s){uploading && ` — ${progress}%`}
+              {previews.length} foto(s) selecionada(s)
+              {uploading && <span className="nums font-medium text-primary"> — {progress}%</span>}
             </p>
             <div className="flex gap-2">
               <Button
@@ -239,9 +252,9 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                 <Trash2 size={15} />
                 Limpar
               </Button>
-              <Button size="sm" disabled={uploading} onClick={startUpload}>
-                <UploadCloud size={15} />
-                {uploading ? 'Enviando...' : 'Enviar tudo'}
+              <Button size="sm" loading={uploading} onClick={startUpload}>
+                {!uploading && <UploadCloud size={15} />}
+                {uploading ? 'Enviando…' : 'Enviar tudo'}
               </Button>
             </div>
           </div>
@@ -249,7 +262,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
           {uploading && (
             <div className="mb-4 h-2 overflow-hidden rounded-full bg-surface-2">
               <motion.div
-                className="h-full bg-primary"
+                className="h-full rounded-full bg-primary"
                 animate={{ width: `${progress}%` }}
                 transition={{ ease: 'easeOut' }}
               />
@@ -265,15 +278,17 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
-                  className="group relative aspect-square overflow-hidden rounded-lg border border-border"
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="group relative aspect-square overflow-hidden rounded-2xl border border-border ring-1 ring-border/40"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.url} alt="" className="h-full w-full object-cover" />
                   {!uploading && (
                     <button
                       onClick={() => setPreviews((prev) => prev.filter((_, j) => j !== i))}
-                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100"
+                      className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur transition-opacity duration-200 group-hover:opacity-100"
                       title="Remover"
+                      aria-label="Remover foto"
                     >
                       <X size={14} />
                     </button>
@@ -286,14 +301,14 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
       )}
 
       {pending.length > 0 && (
-        <div className="mt-6 space-y-3">
+        <div className="mt-7 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted">
               Preencha e salve — ao salvar, o produto vai para o catálogo.
             </p>
-            <Button disabled={savingAll || !fillableCount} onClick={saveAll}>
-              <Save size={16} />
-              {savingAll ? 'Salvando...' : `Salvar todos (${fillableCount})`}
+            <Button loading={savingAll} disabled={!fillableCount} onClick={saveAll}>
+              {!savingAll && <Save size={16} />}
+              {savingAll ? 'Salvando…' : `Salvar todos (${fillableCount})`}
             </Button>
           </div>
 
@@ -301,31 +316,34 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                    <th className="p-3 font-medium">Foto</th>
-                    <th className="p-3 font-medium">Nome do produto</th>
-                    <th className="p-3 font-medium">Preço pago</th>
-                    <th className="p-3 font-medium">Preço de venda</th>
-                    <th className="w-24 p-3 font-medium">&nbsp;</th>
+                  <tr className="border-b border-border bg-surface-2/70 text-left text-[11px] uppercase tracking-wider text-faint">
+                    <th className="py-3 pl-4 pr-3 font-semibold">Foto</th>
+                    <th className="px-3 py-3 font-semibold">Nome do produto</th>
+                    <th className="px-3 py-3 font-semibold">Preço pago</th>
+                    <th className="px-3 py-3 font-semibold">Preço de venda</th>
+                    <th className="w-24 px-3 py-3 font-semibold">&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pending.map((product) => (
-                    <tr key={product.id} className="border-b border-border/60 last:border-0">
-                      <td className="p-3">
-                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                    <tr
+                      key={product.id}
+                      className="border-b border-border/60 transition-colors duration-150 last:border-0 hover:bg-surface-2/50"
+                    >
+                      <td className="py-3 pl-4 pr-3">
+                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={product.url} alt="" className="h-full w-full object-cover" />
                         </div>
                       </td>
-                      <td className="min-w-48 p-3">
+                      <td className="min-w-48 px-3 py-3">
                         <Input
                           value={product.name}
                           onChange={(e) => updateField(product.id, 'name', e.target.value)}
                           placeholder="Ex: Carregador USB-C 20W"
                         />
                       </td>
-                      <td className="min-w-32 p-3">
+                      <td className="min-w-32 px-3 py-3">
                         <Input
                           inputMode="decimal"
                           value={product.purchasePrice}
@@ -333,7 +351,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                           placeholder="18,50"
                         />
                       </td>
-                      <td className="min-w-32 p-3">
+                      <td className="min-w-32 px-3 py-3">
                         <Input
                           inputMode="decimal"
                           value={product.salePrice}
@@ -341,14 +359,15 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                           placeholder="39,90"
                         />
                       </td>
-                      <td className="p-3">
+                      <td className="px-3 py-3">
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={product.saving || !product.name.trim()}
+                          loading={product.saving}
+                          disabled={!product.name.trim()}
                           onClick={() => saveOne(product.id)}
                         >
-                          {product.saving ? '...' : 'Salvar'}
+                          {product.saving ? '' : 'Salvar'}
                         </Button>
                       </td>
                     </tr>
@@ -361,7 +380,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
       )}
 
       {loaded && !pending.length && !previews.length && (
-        <p className="mt-6 text-center text-sm text-muted">
+        <p className="mt-7 text-center text-sm text-muted">
           Nada aguardando no momento — envie fotos acima para começar um lote.
         </p>
       )}
