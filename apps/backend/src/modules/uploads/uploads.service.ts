@@ -46,8 +46,9 @@ export class UploadsService {
     return createHash('sha256').update(buffer).digest('hex');
   }
 
-  /** Upload web: cria produto (título preenchido depois) e opcionalmente enfileira. */
-  async ingest(ownerId: string, file: UploadedImage, startPipeline = true) {
+  /** Upload web (ou Telegram sem legenda): cria produto (título preenchido
+   * depois no Envio em Lote) e opcionalmente enfileira. */
+  async ingest(ownerId: string, file: UploadedImage, startPipeline = true, source = 'web') {
     const imageHash = this.sha256(file.buffer);
     const created = await this.products.create({
       ownerId,
@@ -56,7 +57,7 @@ export class UploadsService {
       images: {},
       vision: {},
       imageHash,
-      source: 'web',
+      source,
     });
 
     const ext = file.mimeType.split('/')[1] ?? 'jpg';
