@@ -31,8 +31,8 @@ COPY --from=build /app/shared/package.json ./shared/
 COPY --from=build /app/apps/backend/dist ./apps/backend/dist
 COPY --from=build /app/apps/backend/package.json ./apps/backend/
 EXPOSE 3333
-# Sobe API, worker e bot do Telegram no mesmo container — assim um único Web
-# Service (com HTTP para keep-alive) mantém os três processos vivos, sem
-# precisar de um Background Worker pago à parte. Se qualquer processo cair,
-# `wait -n` encerra o container inteiro para a plataforma reiniciar os três.
-CMD ["bash", "-c", "node apps/backend/dist/main.js & node apps/backend/dist/worker.js & node apps/backend/dist/telegram.js & wait -n"]
+# Sobe API + bot do Telegram no mesmo container. O pipeline de IA agora roda
+# DENTRO da API (sem Redis/worker), então não há mais processo worker. Um único
+# Web Service (com HTTP para keep-alive) mantém os dois processos vivos; se
+# qualquer um cair, `wait -n` encerra o container para a plataforma reiniciar.
+CMD ["bash", "-c", "node apps/backend/dist/main.js & node apps/backend/dist/telegram.js & wait -n"]
