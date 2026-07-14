@@ -64,13 +64,29 @@ export default function ProductsPage() {
   });
 
   async function duplicate(id: string) {
-    await api.post(`/products/${id}/duplicate`);
-    qc.invalidateQueries({ queryKey: ['products'] });
+    if (data?.demo) {
+      alert('Modo demonstração — suba o backend para duplicar produtos de verdade.');
+      return;
+    }
+    try {
+      await api.post(`/products/${id}/duplicate`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+    } catch (e) {
+      alert(`Não foi possível duplicar: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   async function remove(id: string) {
+    if (data?.demo) {
+      alert('Modo demonstração — suba o backend para excluir produtos de verdade.');
+      return;
+    }
     if (!confirm('Excluir este produto?')) return;
-    await api.del(`/products/${id}`);
-    qc.invalidateQueries({ queryKey: ['products'] });
+    try {
+      await api.del(`/products/${id}`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+    } catch (e) {
+      alert(`Não foi possível excluir: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   function toggleSelected(id: string) {
@@ -96,6 +112,8 @@ export default function ProductsPage() {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ['products'] });
       alert(`${res.published}/${res.total} produtos publicados.`);
+    } catch (e) {
+      alert(`Não foi possível publicar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPublishing(false);
     }
@@ -113,6 +131,8 @@ export default function ProductsPage() {
       a.download = `produtos-${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Não foi possível gerar o Excel: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setExporting(false);
     }
