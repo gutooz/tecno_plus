@@ -16,6 +16,17 @@ export interface ListProductsQuery {
   sortDir?: 'asc' | 'desc';
 }
 
+/** Grava `value` em `obj` seguindo `path`, criando objetos intermediários se faltarem. */
+function setDeep(obj: Record<string, unknown>, path: string[], value: unknown): void {
+  let node = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    const k = path[i];
+    if (typeof node[k] !== 'object' || node[k] === null) node[k] = {};
+    node = node[k] as Record<string, unknown>;
+  }
+  node[path[path.length - 1]] = value;
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -59,9 +70,33 @@ export class ProductsService {
     return doc;
   }
 
-  async update(ownerId: string, id: string, patch: Partial<Product>) {
+  async update(ownerId: string, id: string, patch: Record<string, unknown>) {
+    // O frontend envia patches com chaves em notação de ponto (ex.: 'pricing.purchasePrice').
+    // Um $set direto em 'pricing.x' falha no Mongo quando o subdocumento pai é null — que é
+    // o default do schema para produtos recém-enviados (status UPLOADED):
+    //   MongoServerError 28: "Cannot create field 'x' in element {pricing: null}".
+    // Por isso expandimos as chaves e gravamos o objeto pai INTEIRO, semeado com o valor
+    // atual: assim null vira objeto e nenhum campo já existente é perdido.
+    const current = await this.model.findOne({ _id: id, ownerId }).lean();
+    if (!current) throw new NotFoundException('Produto não encontrado');
+
+    const $set: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (!key.includes('.')) {
+        $set[key] = value;
+        continue;
+      }
+      const [root, ...rest] = key.split('.');
+      const base =
+        ($set[root] as Record<string, unknown> | undefined) ??
+        ((current as Record<string, unknown>)[root] as Record<string, unknown> | null) ??
+        {};
+      setDeep(base, rest, value);
+      $set[root] = base;
+    }
+
     const doc = await this.model
-      .findOneAndUpdate({ _id: id, ownerId }, { $set: patch }, { new: true })
+      .findOneAndUpdate({ _id: id, ownerId }, { $set }, { new: true })
       .lean();
     if (!doc) throw new NotFoundException('Produto não encontrado');
     return doc;
