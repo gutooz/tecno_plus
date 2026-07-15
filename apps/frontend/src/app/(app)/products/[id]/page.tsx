@@ -54,13 +54,21 @@ interface EditableFields {
   weight: string;
 }
 
+interface ChatMessage {
+  role: 'user' | 'system';
+  text: string;
+}
+
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditableFields | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ index: number; src: string } | null>(null);
+  const [regenPrompt, setRegenPrompt] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+  const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
 
   // Lightbox: fecha no Esc e trava o scroll do fundo enquanto aberto.
   useEffect(() => {
@@ -147,6 +155,37 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  function openLightbox(index: number, src: string) {
+    setLightbox({ index, src });
+    setChatLog([]);
+    setRegenPrompt('');
+  }
+
+  async function regenerateLightboxImage() {
+    const prompt = regenPrompt.trim();
+    if (!lightbox || !prompt || regenerating) return;
+    setChatLog((log) => [...log, { role: 'user', text: prompt }]);
+    setRegenPrompt('');
+    setRegenerating(true);
+    try {
+      const updated = await api.post<ProductDetail>(`/products/${id}/regenerate-image`, {
+        index: lightbox.index,
+        prompt,
+      });
+      const newSrc = productGallery(updated.images)[lightbox.index] ?? lightbox.src;
+      setLightbox({ index: lightbox.index, src: newSrc });
+      setChatLog((log) => [...log, { role: 'system', text: 'Foto atualizada com esse ajuste.' }]);
+      qc.setQueryData(['product', id], updated);
+    } catch (e) {
+      setChatLog((log) => [
+        ...log,
+        { role: 'system', text: `Não deu: ${e instanceof Error ? e.message : String(e)}` },
+      ]);
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   if (isLoading || !p) return <DetailSkeleton />;
 
   // Mostra as 3 imagens Shopee (produto recortado em fundo limpo) quando prontas;
@@ -199,7 +238,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                 <button
                   key={i}
                   type="button"
-                  onClick={() => setLightbox(src)}
+                  onClick={() => openLightbox(i, src)}
                   aria-label="Ampliar imagem"
                   className="group relative overflow-hidden rounded-2xl border border-border ring-primary/45 transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2"
                 >
@@ -363,17 +402,60 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             >
               <X size={20} />
             </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <motion.img
-              src={lightbox}
-              alt=""
+            <motion.div
               onClick={(e) => e.stopPropagation()}
               initial={{ scale: 0.94, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.94, opacity: 0 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
-            />
+              className="flex max-h-[90vh] w-full max-w-3xl flex-col items-stretch gap-3 sm:flex-row sm:items-end"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={lightbox.src}
+                alt=""
+                className="max-h-[55vh] w-full rounded-2xl object-contain shadow-2xl sm:max-h-[85vh] sm:flex-1"
+              />
+
+              <div className="flex w-full flex-col rounded-2xl bg-surface p-3 shadow-2xl sm:w-72">
+                <p className="mb-2 text-xs font-medium text-muted">Pedir ajuste só nesta foto</p>
+                {chatLog.length > 0 && (
+                  <div className="mb-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                    {chatLog.map((m, i) => (
+                      <p
+                        key={i}
+                        className={
+                          m.role === 'user'
+                            ? 'rounded-xl bg-primary/10 px-2.5 py-1.5 text-xs text-fg'
+                            : 'rounded-xl bg-surface-2 px-2.5 py-1.5 text-xs text-muted'
+                        }
+                      >
+                        {m.text}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={regenPrompt}
+                    onChange={(e) => setRegenPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') regenerateLightboxImage();
+                    }}
+                    placeholder="Ex.: deixa o fundo mais claro"
+                    className="flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    loading={regenerating}
+                    disabled={!regenPrompt.trim()}
+                    onClick={regenerateLightboxImage}
+                  >
+                    {!regenerating && <Send size={14} />}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

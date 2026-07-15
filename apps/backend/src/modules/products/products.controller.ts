@@ -109,6 +109,15 @@ export class ProductsController {
     return this.products.regenerateImages(user.id, id);
   }
 
+  @Post(':id/regenerate-image')
+  regenerateImage(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { index?: number; prompt?: string },
+  ) {
+    return this.products.regenerateImage(user.id, id, body.index ?? 0, body.prompt ?? '');
+  }
+
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.products.remove(user.id, id);

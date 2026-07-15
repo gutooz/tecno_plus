@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import { ProductImageSet } from '@tecnoplus/shared';
 import { StorageService } from '../modules/storage/storage.service';
 import { fetchImageAsBase64 } from '../modules/ai/ai.utils';
-import { IMAGE_PROMPTS } from './prompts';
+import { IMAGE_KEEP, IMAGE_PROMPTS } from './prompts';
 
 /**
  * AGENTE 4 — Image Agent.
@@ -76,6 +76,53 @@ export class ImageAgent {
       shopee,
       backgroundRemoved: shopee[0],
     };
+  }
+
+  /**
+   * Refaz UMA foto do produto (índice em `images.shopee`) com um prompt livre
+   * do operador — usado quando só uma das fotos geradas precisa de ajuste,
+   * sem repetir o lote inteiro. Mesma regra de ouro: produto preservado, só o
+   * enquadramento/cena muda (força-se isso somando IMAGE_KEEP ao prompt).
+   * Quando o índice é o principal (0), também recalcula hd/square/webp/thumb.
+   */
+  async regenerateScene(
+    productId: string,
+    originalUrl: string,
+    sceneIndex: number,
+    customPrompt: string,
+  ): Promise<{ url: string; hd?: string; square?: string; webp?: string; thumbnail?: string }> {
+    const { base64, mediaType } = await fetchImageAsBase64(originalUrl);
+    const input = Buffer.from(base64, 'base64');
+    const base = `products/${productId}`;
+    const key = IMAGE_PROMPTS[sceneIndex]?.key ?? `shopee-${sceneIndex + 1}`;
+
+    const prompt = `${customPrompt.trim()} ${IMAGE_KEEP}`;
+    const generated = await this.geminiScene(input, mediaType, prompt);
+    if (!generated) {
+      throw new Error('Não foi possível gerar a imagem agora — tente novamente.');
+    }
+    const normalized = await this.toShopee(generated);
+    const url = await this.storage.upload(`${base}/${key}.jpg`, normalized, 'image/jpeg');
+    if (sceneIndex !== 0) return { url };
+
+    const [hd, square, webp, thumbnail] = await Promise.all([
+      this.transform(normalized, `${base}/hd.jpg`, (img) =>
+        img.resize(1600, 1600, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }),
+      ),
+      this.transform(normalized, `${base}/square.jpg`, (img) =>
+        img
+          .resize(1200, 1200, { fit: 'contain', background: { r: 255, g: 255, b: 255 } })
+          .flatten({ background: { r: 255, g: 255, b: 255 } })
+          .jpeg({ quality: 90 }),
+      ),
+      this.transform(normalized, `${base}/image.webp`, (img) =>
+        img.resize(1200, 1200, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }),
+      ),
+      this.transform(normalized, `${base}/thumb.webp`, (img) =>
+        img.resize(320, 320, { fit: 'cover' }).webp({ quality: 75 }),
+      ),
+    ]);
+    return { url, hd, square, webp, thumbnail };
   }
 
   /**

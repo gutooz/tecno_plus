@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
 import { ProductStatus, QueueName } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { QueueService } from '../queues/queue.service';
+import { ImageAgent } from '../../agents/image.agent';
 import { exportShopeeWorkbook, SourceProduct } from './shopee';
 
 export interface ListProductsQuery {
@@ -34,6 +35,7 @@ export class ProductsService {
   constructor(
     @InjectModel(Product.name) private readonly model: Model<ProductDocument>,
     private readonly queue: QueueService,
+    private readonly image: ImageAgent,
   ) {}
 
   async list(q: ListProductsQuery) {
@@ -142,6 +144,39 @@ export class ProductsService {
     if (!doc) throw new NotFoundException('Produto não encontrado');
     await this.queue.enqueue(QueueName.IMAGE, { productId: id, ownerId });
     return { queued: true };
+  }
+
+  /**
+   * Refaz UMA foto específica (por índice em `images.shopee`) com um prompt
+   * livre digitado pelo operador — pro caso comum de só uma das 4 fotos
+   * geradas precisar de ajuste. Roda direto (sem fila): é uma única chamada
+   * de imagem, rápida o bastante pra esperar na resposta HTTP.
+   */
+  async regenerateImage(ownerId: string, id: string, index: number, prompt: string) {
+    const trimmed = prompt.trim();
+    if (!trimmed) throw new BadRequestException('Descreva o que quer mudar na foto.');
+
+    const doc = await this.model.findOne({ _id: id, ownerId }).lean();
+    if (!doc) throw new NotFoundException('Produto não encontrado');
+
+    const images = (doc.images ?? {}) as { original?: string; shopee?: string[] };
+    if (!images.original) throw new BadRequestException('Produto sem imagem original.');
+
+    const result = await this.image.regenerateScene(id, images.original, index, trimmed);
+
+    const shopee = Array.isArray(images.shopee) ? [...images.shopee] : [];
+    shopee[index] = result.url;
+    const $set: Record<string, unknown> = { 'images.shopee': shopee };
+    if (result.hd) $set['images.hd'] = result.hd;
+    if (result.square) $set['images.square'] = result.square;
+    if (result.webp) $set['images.webp'] = result.webp;
+    if (result.thumbnail) $set['images.thumbnail'] = result.thumbnail;
+
+    const updated = await this.model
+      .findOneAndUpdate({ _id: id, ownerId }, { $set }, { new: true })
+      .lean();
+    if (!updated) throw new NotFoundException('Produto não encontrado');
+    return updated;
   }
 
   async regenerateImagesBatch(ownerId: string, ids: string[]) {
