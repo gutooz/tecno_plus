@@ -3,7 +3,17 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Copy, Trash2, Pencil, Send, Download, Plus, PackageOpen } from 'lucide-react';
+import {
+  Search,
+  Copy,
+  Trash2,
+  Pencil,
+  Send,
+  Download,
+  Plus,
+  PackageOpen,
+  Sparkles,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, Checkbox, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
@@ -34,6 +44,7 @@ export default function ProductsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [publishing, setPublishing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, page],
@@ -109,6 +120,29 @@ export default function ProductsPage() {
     }
   }
 
+  async function regenerateImagesSelected() {
+    if (!selected.size) return;
+    if (
+      !confirm(
+        `Vai gerar novas fotos (com cena de uso) e parar de usar a foto original pra ${selected.size} produto(s). Continuar?`,
+      )
+    )
+      return;
+    setRegenerating(true);
+    try {
+      const res = await api.post<{ queued: number }>('/products/regenerate-images-batch', {
+        ids: [...selected],
+      });
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['products'] });
+      alert(`${res.queued} produto(s) na fila — as novas fotos aparecem em alguns minutos.`);
+    } catch (e) {
+      alert(`Não foi possível regenerar as imagens: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   const allChecked = Boolean(data?.items.length) && selected.size === data?.items.length;
   const isEmpty = data && data.items.length === 0 && !isLoading;
 
@@ -147,6 +181,15 @@ export default function ProductsPage() {
         <div className="mb-3 flex flex-wrap items-center gap-2.5 rounded-2xl border border-primary/20 bg-primary/[0.06] px-4 py-2.5 animate-fade-in">
           <span className="text-sm font-medium text-primary">{selected.size} selecionado(s)</span>
           <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              loading={regenerating}
+              onClick={regenerateImagesSelected}
+            >
+              {!regenerating && <Sparkles size={15} />}
+              {regenerating ? 'Enviando…' : `Regenerar imagens (${selected.size})`}
+            </Button>
             <Button variant="outline" size="sm" loading={exporting} onClick={exportSelected}>
               {!exporting && <Download size={15} />}
               {exporting ? 'Gerando…' : `Excel (${selected.size})`}

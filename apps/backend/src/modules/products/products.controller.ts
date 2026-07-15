@@ -75,6 +75,11 @@ export class ProductsController {
     return this.publish.publishBatch(user.id, body.ids ?? [], body.channel);
   }
 
+  @Post('regenerate-images-batch')
+  regenerateImagesBatch(@CurrentUser() user: AuthUser, @Body() body: { ids?: string[] }) {
+    return this.products.regenerateImagesBatch(user.id, body.ids ?? []);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.products.findById(user.id, id);
@@ -97,6 +102,11 @@ export class ProductsController {
   @Post(':id/process')
   process(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.products.startPipeline(user.id, id);
+  }
+
+  @Post(':id/regenerate-images')
+  regenerateImages(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.products.regenerateImages(user.id, id);
   }
 
   @Delete(':id')

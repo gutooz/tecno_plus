@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
-import { ProductStatus } from '@tecnoplus/shared';
+import { ProductStatus, QueueName } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { QueueService } from '../queues/queue.service';
 import { exportShopeeWorkbook, SourceProduct } from './shopee';
@@ -129,6 +129,27 @@ export class ProductsService {
     if (!doc) throw new NotFoundException('Produto nÃ£o encontrado');
     await this.queue.startPipeline({ productId: id, ownerId });
     return { queued: true };
+  }
+
+  /**
+   * Refaz só a etapa de imagem (sem repetir visão/mercado/conteúdo) — usada
+   * pra aplicar em produtos já processados um novo conjunto de prompts do
+   * Image Agent (ex.: nova cena de uso) sem gastar IA reanalisando a foto do
+   * zero. Como qualquer etapa do pipeline, encadeia preço → publicação.
+   */
+  async regenerateImages(ownerId: string, id: string) {
+    const doc = await this.model.findOne({ _id: id, ownerId });
+    if (!doc) throw new NotFoundException('Produto não encontrado');
+    await this.queue.enqueue(QueueName.IMAGE, { productId: id, ownerId });
+    return { queued: true };
+  }
+
+  async regenerateImagesBatch(ownerId: string, ids: string[]) {
+    const docs = await this.model.find({ _id: { $in: ids }, ownerId }, { _id: 1 }).lean();
+    await Promise.all(
+      docs.map((d) => this.queue.enqueue(QueueName.IMAGE, { productId: String(d._id), ownerId })),
+    );
+    return { queued: docs.length };
   }
 
   async countsByStatus(ownerId: string) {
