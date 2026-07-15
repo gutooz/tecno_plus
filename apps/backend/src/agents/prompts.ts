@@ -70,6 +70,13 @@ export const IMAGE_KEEP =
   'shadow, even studio lighting, true-to-life colors and sharp focus. Square 1:1, ' +
   'high-resolution, professional e-commerce packshot.';
 
+/** Mesma regra de preservação do produto, sem as exigências de packshot (centralizado,
+ * fundo liso, 1:1 estúdio) — usada na cena de uso, que precisa de um ambiente real. */
+export const IMAGE_PRESERVE_PRODUCT =
+  'Preserve the product EXACTLY as photographed: same shape, colors, proportions, ' +
+  'materials, and all text, logos and labels — do not redraw, restyle, resize, add or ' +
+  'remove anything on the product itself.';
+
 export const IMAGE_PROMPTS: { key: string; prompt: string }[] = [
   {
     key: 'shopee-1',
@@ -82,5 +89,16 @@ export const IMAGE_PROMPTS: { key: string; prompt: string }[] = [
   {
     key: 'shopee-3',
     prompt: `Cut the product out and place it on an elegant, softly-lit neutral surface with tasteful, uncluttered styling that fits a premium listing; keep it minimal so the product stays the hero. ${IMAGE_KEEP}`,
+  },
+  {
+    key: 'shopee-4',
+    prompt:
+      `Place the product into a natural, photorealistic lifestyle scene showing it actually ` +
+      `being used in a real everyday setting appropriate for this exact kind of product ` +
+      `(e.g. worn on a wrist/hand, held, plugged in and lit up, placed on a desk mid-use, ` +
+      `being carried) — as if a real customer were using it right now. ${IMAGE_PRESERVE_PRODUCT} ` +
+      `Only add a plausible human interaction and a realistic surrounding environment; keep ` +
+      `the product as the clear focal point, in sharp focus, well-lit, high-resolution, ` +
+      `suitable as an additional marketplace listing photo.`,
   },
 ];

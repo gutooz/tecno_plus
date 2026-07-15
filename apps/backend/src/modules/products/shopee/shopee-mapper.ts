@@ -93,18 +93,15 @@ function idOf(p: SourceProduct): string {
   return p.internalSku ?? '';
 }
 
-/** Coleta URLs de imagem: prioriza as 3 imagens Shopee tratadas, depois variantes. */
+/**
+ * Coleta URLs de imagem: só as variantes já tratadas pela IA (recorte/fundo/lote de
+ * uso), nunca a foto original enviada pelo operador — ela costuma ter fundo bagunçado,
+ * dedo na frente, iluminação ruim etc., imprópria pra ir direto pro anúncio da Shopee.
+ */
 export function collectImages(images: Record<string, unknown> | null | undefined): string[] {
   const img = images ?? {};
   const shopee = Array.isArray(img.shopee) ? (img.shopee as unknown[]).map(String) : [];
-  const ordered = [
-    ...shopee,
-    str(img, 'square'),
-    str(img, 'hd'),
-    str(img, 'webp'),
-    str(img, 'original'),
-    str(img, 'thumbnail'),
-  ];
+  const ordered = [...shopee, str(img, 'square'), str(img, 'hd'), str(img, 'webp')];
   // Únicas, não-vazias, preservando ordem. Capa + até N adicionais.
   const seen = new Set<string>();
   const out: string[] = [];
