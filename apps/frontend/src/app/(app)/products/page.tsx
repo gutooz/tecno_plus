@@ -17,7 +17,7 @@ import {
 import { api } from '@/lib/api';
 import { Button, Card, Checkbox, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
-import { formatBRL, formatPercent } from '@/lib/utils';
+import { formatBRL, formatPercent, productThumbnail } from '@/lib/utils';
 
 interface ProductRow {
   _id: string;
@@ -26,7 +26,7 @@ interface ProductRow {
   aiConfidence: number;
   vision: { name?: string; brand?: string; category?: string };
   pricing?: { purchasePrice?: number; suggestedPrice?: number; marginPercent?: number };
-  images?: { thumbnail?: string; original?: string };
+  images?: { thumbnail?: string };
   publishedChannels?: string[];
 }
 
@@ -218,10 +218,10 @@ export default function ProductsPage() {
                 aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
               />
               <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60">
-                {(p.images?.thumbnail || p.images?.original) && (
+                {productThumbnail(p.images) && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={p.images.thumbnail || p.images.original}
+                    src={productThumbnail(p.images)}
                     alt=""
                     className="h-full w-full object-cover"
                   />
@@ -319,10 +319,10 @@ export default function ProductsPage() {
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border/60">
-                          {(p.images?.thumbnail || p.images?.original) && (
+                          {productThumbnail(p.images) && (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={p.images.thumbnail || p.images.original}
+                              src={productThumbnail(p.images)}
                               alt=""
                               className="h-full w-full object-cover"
                             />

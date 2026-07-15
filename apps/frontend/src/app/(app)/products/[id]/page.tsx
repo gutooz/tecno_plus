@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { ArrowLeft, Send, X, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, Input, Skeleton, StatusPill } from '@/components/ui';
-import { formatBRL, formatPercent } from '@/lib/utils';
+import { formatBRL, formatPercent, productGallery } from '@/lib/utils';
 
 interface ProductDetail {
   _id: string;
@@ -37,7 +37,6 @@ interface ProductDetail {
     roi?: number;
   };
   images?: {
-    original?: string;
     hd?: string;
     square?: string;
     webp?: string;
@@ -151,12 +150,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   if (isLoading || !p) return <DetailSkeleton />;
 
   // Mostra as 3 imagens Shopee (produto recortado em fundo limpo) quando prontas;
-  // senão, cai nas variantes antigas. A foto original entra ao fim como referência.
-  const gallery = (
-    p.images?.shopee?.length
-      ? [...p.images.shopee, p.images?.original]
-      : [p.images?.hd, p.images?.square, p.images?.webp, p.images?.original]
-  ).filter(Boolean) as string[];
+  // senão, cai nas variantes antigas. A foto original nunca aparece aqui.
+  const gallery = productGallery(p.images);
 
   const confidence = Math.round((p.aiConfidence ?? 0) * 100);
 
