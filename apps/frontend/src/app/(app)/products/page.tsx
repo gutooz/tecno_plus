@@ -18,14 +18,15 @@ import {
 import { api } from '@/lib/api';
 import { Button, Card, Checkbox, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
-import { formatBRL, formatPercent, productThumbnail } from '@/lib/utils';
+import { cn, formatBRL, formatPercent, productThumbnail } from '@/lib/utils';
 
 interface ProductRow {
   _id: string;
   internalSku: string;
   status: string;
   aiConfidence: number;
-  vision: { name?: string; brand?: string; category?: string };
+  vision: { name?: string; brand?: string; category?: string; quantity?: number };
+  content?: { category?: string };
   pricing?: { purchasePrice?: number; suggestedPrice?: number; marginPercent?: number };
   images?: { thumbnail?: string };
   publishedChannels?: string[];
@@ -36,6 +37,15 @@ interface ListResponse {
   total: number;
   page: number;
   pages: number;
+}
+
+/**
+ * A categoria "boa" (curada pelo agente de conteúdo) vive em `content.category`;
+ * `vision.category` é só o palpite bruto da IA de visão, nem sempre presente.
+ * Sem esse fallback a lista mostra "—" mesmo em produtos que já têm categoria.
+ */
+function categoryOf(p: ProductRow): string | undefined {
+  return p.content?.category || p.vision?.category;
 }
 
 export default function ProductsPage() {
@@ -274,7 +284,7 @@ export default function ProductsPage() {
                   <div className="min-w-0">
                     <p className="truncate font-medium">{p.vision?.name ?? p.internalSku}</p>
                     <p className="truncate text-xs text-muted">
-                      {p.vision?.category ?? p.vision?.brand ?? '—'}
+                      {categoryOf(p) ?? p.vision?.brand ?? '—'}
                     </p>
                   </div>
                   <StatusPill status={p.status} />
@@ -288,6 +298,9 @@ export default function ProductsPage() {
                   </span>
                   <span className="font-medium text-success">
                     {formatPercent(p.pricing?.marginPercent)}
+                  </span>
+                  <span className={p.vision?.quantity ? 'text-muted' : 'font-medium text-warning'}>
+                    Estoque <b className="text-fg">{p.vision?.quantity ?? '—'}</b>
                   </span>
                 </div>
                 <div className="mt-2.5 flex items-center gap-1">
@@ -333,6 +346,7 @@ export default function ProductsPage() {
                 <th className="px-3 py-3 font-semibold">Compra</th>
                 <th className="px-3 py-3 font-semibold">Venda</th>
                 <th className="px-3 py-3 font-semibold">Margem</th>
+                <th className="px-3 py-3 font-semibold">Estoque</th>
                 <th className="px-3 py-3 font-semibold">IA</th>
                 <th className="px-3 py-3 font-semibold">Status</th>
                 <th className="px-3 py-3 pr-4 text-right font-semibold">Ações</th>
@@ -342,7 +356,7 @@ export default function ProductsPage() {
               {isLoading &&
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/60">
-                    <td colSpan={9} className="px-4 py-3">
+                    <td colSpan={10} className="px-4 py-3">
                       <Skeleton className="h-10 w-full rounded-xl" />
                     </td>
                   </tr>
@@ -376,13 +390,21 @@ export default function ProductsPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-muted">{p.vision?.category ?? '—'}</td>
+                    <td className="px-3 py-3 text-muted">{categoryOf(p) ?? '—'}</td>
                     <td className="nums px-3 py-3">{formatBRL(p.pricing?.purchasePrice)}</td>
                     <td className="nums px-3 py-3 font-medium">
                       {formatBRL(p.pricing?.suggestedPrice)}
                     </td>
                     <td className="nums px-3 py-3 font-medium text-success">
                       {formatPercent(p.pricing?.marginPercent)}
+                    </td>
+                    <td
+                      className={cn(
+                        'nums px-3 py-3',
+                        p.vision?.quantity ? 'text-muted' : 'font-medium text-warning',
+                      )}
+                    >
+                      {p.vision?.quantity ?? '—'}
                     </td>
                     <td className="nums px-3 py-3 text-muted">
                       {p.aiConfidence ? `${Math.round(p.aiConfidence * 100)}%` : '—'}

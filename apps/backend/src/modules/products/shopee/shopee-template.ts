@@ -100,8 +100,13 @@ export const SHOPEE_LIMITS = {
   variationNameMaxLength: 30,
   gtinMinLength: 8,
   gtinMaxLength: 14,
-  /** Estoque assumido quando o produto não traz quantidade (marcado como corrigido). */
-  defaultStock: 1,
+  /**
+   * Faixa de estoque assumida quando o produto não traz quantidade (marcado
+   * como corrigido). Modelo é dropshipping — não há contagem física pra
+   * "ler"; um valor nessa faixa evita anúncio com estoque zerado/parado.
+   */
+  defaultStockMin: 50,
+  defaultStockMax: 100,
   maxAdditionalPhotos: 8,
 } as const;
 

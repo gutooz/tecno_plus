@@ -74,6 +74,12 @@ function clampLength(s: string, max: number): string {
   return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trim();
 }
 
+/** Inteiro aleatório dentro da faixa de estoque padrão (dropshipping). */
+function randomStock(): number {
+  const { defaultStockMin: min, defaultStockMax: max } = SHOPEE_LIMITS;
+  return Math.floor(min + Math.random() * (max - min + 1));
+}
+
 function push(
   list: Correction[],
   mp: MappedProduct,
@@ -152,17 +158,18 @@ export function autofix(products: MappedProduct[], template: ShopeeTemplate): Co
         }
       }
 
-      // ── Estoque: default / negativo / inteiro ─────────────────────────
+      // ── Estoque: default (dropshipping) / negativo / inteiro ──────────
       if (v.estoque === '' || v.estoque == null) {
+        const generated = randomStock();
         push(
           corrections,
           mp,
           'estoque',
           '',
-          SHOPEE_LIMITS.defaultStock,
-          'Estoque ausente — assumido padrão (revise).',
+          generated,
+          `Estoque ausente — gerado ${generated} (faixa ${SHOPEE_LIMITS.defaultStockMin}–${SHOPEE_LIMITS.defaultStockMax}, modelo dropshipping).`,
         );
-        v.estoque = SHOPEE_LIMITS.defaultStock;
+        v.estoque = generated;
       } else if (typeof v.estoque === 'number') {
         if (v.estoque < 0) {
           push(corrections, mp, 'estoque', v.estoque, 0, 'Estoque negativo ajustado para 0.');

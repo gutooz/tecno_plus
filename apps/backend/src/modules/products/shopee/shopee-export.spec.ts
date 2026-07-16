@@ -64,7 +64,9 @@ describe('Shopee export — mapper/autofix/validator', () => {
     const p2 = mapped[1].rows[0].values;
     expect(String(p2.nome)).not.toMatch(/🔪/u);
     expect(String(p2.nome).length).toBeLessThanOrEqual(SHOPEE_LIMITS.titleMax);
-    expect(p2.estoque).toBe(SHOPEE_LIMITS.defaultStock); // não havia quantidade
+    // não havia quantidade — gera dentro da faixa padrão de dropshipping
+    expect(p2.estoque).toBeGreaterThanOrEqual(SHOPEE_LIMITS.defaultStockMin);
+    expect(p2.estoque).toBeLessThanOrEqual(SHOPEE_LIMITS.defaultStockMax);
     expect(p2.sku).toBe('ABC-2'); // deduplicado
 
     const reasons = corrections.map((c) => c.column);

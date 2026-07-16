@@ -65,6 +65,7 @@ export class PipelineOrchestrator {
         length?: number;
         width?: number;
         height?: number;
+        quantity?: number;
       };
       const hasUserTitle = Boolean(existing.name);
       const mergedVision: Record<string, unknown> = {
@@ -76,6 +77,13 @@ export class PipelineOrchestrator {
         // e peso errado é frete cobrado errado em toda venda.
         weight: existing.weight ?? out.attributes.weight,
         weightSource: existing.weight != null ? existing.weightSource : out.attributes.weightSource,
+        // Estoque: modelo de dropshipping, não há contagem física pra "ler" — o
+        // fornecedor é quem tem o produto. Sem número real disponível (nem digitado
+        // pelo operador, nem visível na embalagem), gera um valor entre 50 e 100
+        // pra não ficar zerado/parado. Existente (real ou já gerado) nunca é
+        // sobrescrito.
+        quantity:
+          existing.quantity ?? out.attributes.quantity ?? Math.floor(50 + Math.random() * 51),
       };
 
       // Medidas do pacote (comprimento/largura/altura): a visão não lê isso da
