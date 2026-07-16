@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { exportShopeeWorkbook } from './shopee-export';
+import { encodeReportHeader, exportShopeeWorkbook } from './shopee-export';
 import { REFERENCE_TEMPLATE_BR, SHOPEE_LIMITS } from './shopee-template';
 import { mapProducts } from './shopee-mapper';
 import { autofix } from './shopee-autofix';
@@ -154,6 +154,22 @@ describe('Shopee export — workbook', () => {
     });
     const wb = await loadWorkbook(buffer);
     for (const name of REPORT_SHEETS) expect(wb.getWorksheet(name)).toBeDefined();
+  });
+
+  it('serializa o relatório para o header sem caractere que o HTTP recuse', async () => {
+    // Sem template oficial o report carrega o aviso acentuado ("referência BR —"),
+    // e o JSON cru fazia res.setHeader() lançar ERR_INVALID_CHAR → 500 no export.
+    const { report } = await exportShopeeWorkbook([fullProduct()], {
+      generatedAt: GENERATED_AT,
+    });
+    expect(report.warning).toMatch(/referência/);
+
+    const header = encodeReportHeader(report);
+    // Latin-1/ASCII imprimível apenas — é o que o setHeader do Node aceita.
+    expect(header).toMatch(/^[\x20-\x7e]*$/);
+    expect(() => Buffer.from(header, 'ascii')).not.toThrow();
+    // E continua JSON válido: o consumidor recupera o texto original.
+    expect(JSON.parse(header)).toEqual(report);
   });
 
   it('produto rejeitado nunca é escrito na aba de dados', async () => {

@@ -17,6 +17,7 @@ import { MarketplaceChannel, ProductStatus } from '@tecnoplus/shared';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
 import { ProductsService } from './products.service';
+import { encodeReportHeader } from './shopee';
 import { PublishService } from '../publish/publish.service';
 
 @ApiTags('products')
@@ -79,7 +80,8 @@ export class ProductsController {
     );
     // O relatório antes só existia no log do servidor — quem baixava não tinha
     // como saber que produtos ficaram de fora, nem qual template foi usado.
-    res.setHeader('X-Shopee-Export-Report', JSON.stringify(summary));
+    // Vai escapado: header não aceita os acentos do texto (ver encodeReportHeader).
+    res.setHeader('X-Shopee-Export-Report', encodeReportHeader(summary));
     res.setHeader('Access-Control-Expose-Headers', 'X-Shopee-Export-Report');
     res.send(buffer);
   }
