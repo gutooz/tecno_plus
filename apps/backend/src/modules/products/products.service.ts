@@ -5,7 +5,7 @@ import { ProductStatus, QueueName } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { QueueService } from '../queues/queue.service';
 import { ImageAgent } from '../../agents/image.agent';
-import { exportShopeeWorkbook, SourceProduct } from './shopee';
+import { exportShopeeWorkbook, ShopeeExportResult, SourceProduct } from './shopee';
 
 export interface ListProductsQuery {
   ownerId: string;
@@ -203,7 +203,11 @@ export class ProductsService {
    * Regra nº 1: nunca inventar colunas. O layout vem do arquivo oficial
    * (SHOPEE_TEMPLATE_PATH) quando disponível, ou do esquema de referência BR.
    */
-  async exportShopee(ownerId: string, ids?: string[]): Promise<Buffer> {
+  async exportShopee(
+    ownerId: string,
+    ids?: string[],
+    opts?: { includeReportSheets?: boolean },
+  ): Promise<ShopeeExportResult> {
     const filter: FilterQuery<ProductDocument> = { ownerId };
     if (ids?.length) filter._id = { $in: ids };
 
@@ -212,12 +216,16 @@ export class ProductsService {
       .sort({ createdAt: -1 })
       .lean()) as unknown as SourceProduct[];
 
-    const { buffer, report } = await exportShopeeWorkbook(products);
+    const result = await exportShopeeWorkbook(products, {
+      includeReportSheets: opts?.includeReportSheets,
+    });
+    const { report } = result;
     this.logger.log(
-      `Export Shopee: ${report.totalProducts} produto(s) → ${report.totalRows} linha(s) | ` +
-        `template=${report.templateSource} | ${report.corrections} correção(ões) | ` +
-        `${report.errors} erro(s), ${report.warnings} aviso(s) | ${report.rejected} rejeitado(s).`,
+      `Export Shopee: ${report.exportedProducts}/${report.totalProducts} produto(s) → ` +
+        `${report.exportedRows} linha(s) exportada(s) | template=${report.templateSource} | ` +
+        `${report.corrections} correção(ões) | ${report.errors} erro(s), ` +
+        `${report.warnings} aviso(s) | ${report.rejected} rejeitado(s) fora do arquivo.`,
     );
-    return buffer;
+    return result;
   }
 }

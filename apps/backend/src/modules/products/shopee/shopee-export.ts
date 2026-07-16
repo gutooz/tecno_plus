@@ -18,6 +18,10 @@ export interface ShopeeExportReport {
   templateVersion: string;
   totalProducts: number;
   totalRows: number;
+  /** Produtos que realmente foram escritos no arquivo (total menos rejeitados). */
+  exportedProducts: number;
+  /** Linhas realmente escritas — é isso que a Shopee vai importar. */
+  exportedRows: number;
   corrections: number;
   errors: number;
   warnings: number;
@@ -32,7 +36,7 @@ export interface ShopeeExportResult {
 
 export async function exportShopeeWorkbook(
   products: SourceProduct[],
-  opts?: { templatePath?: string; generatedAt?: Date },
+  opts?: { templatePath?: string; generatedAt?: Date; includeReportSheets?: boolean },
 ): Promise<ShopeeExportResult> {
   const { template, warning } = await resolveShopeeTemplate({ templatePath: opts?.templatePath });
 
@@ -50,14 +54,18 @@ export async function exportShopeeWorkbook(
     rejected,
     warning,
     generatedAtISO,
+    includeReportSheets: opts?.includeReportSheets ?? false,
   });
 
   const errors = issues.filter((i) => i.level === 'error').length;
+  const exported = mapped.filter((p) => !rejected.has(p.productId));
   const report: ShopeeExportReport = {
     templateSource: template.source,
     templateVersion: template.version,
     totalProducts: mapped.length,
     totalRows: mapped.reduce((n, p) => n + p.rows.length, 0),
+    exportedProducts: exported.length,
+    exportedRows: exported.reduce((n, p) => n + p.rows.length, 0),
     corrections: corrections.length,
     errors,
     warnings: issues.length - errors,
