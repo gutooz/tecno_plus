@@ -20,6 +20,7 @@ interface ProductDetail {
     brand?: string;
     category?: string;
     weight?: number;
+    quantity?: number;
   };
   market?: { averagePrice?: number; minPrice?: number; maxPrice?: number; competition?: string };
   content?: {
@@ -52,6 +53,7 @@ interface EditableFields {
   purchasePrice: string;
   salePrice: string;
   weight: string;
+  stock: string;
 }
 
 interface ChatMessage {
@@ -98,6 +100,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     purchasePrice: p?.pricing?.purchasePrice != null ? String(p.pricing.purchasePrice) : '',
     salePrice: p?.pricing?.suggestedPrice != null ? String(p.pricing.suggestedPrice) : '',
     weight: p?.vision?.weight != null ? String(p.vision.weight) : '',
+    stock: p?.vision?.quantity != null ? String(p.vision.quantity) : '',
   };
 
   function updateField(field: keyof EditableFields, value: string) {
@@ -110,6 +113,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       const purchasePrice = Number(fields.purchasePrice.replace(',', '.'));
       const salePrice = Number(fields.salePrice.replace(',', '.'));
       const weight = Number(fields.weight.replace(',', '.'));
+      const stock = Number(fields.stock.replace(',', '.'));
       await api.put(`/products/${id}`, {
         'content.title': fields.title,
         'content.description': fields.description,
@@ -118,6 +122,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         // Peso é obrigatório pela Shopee (frete) — só grava se um número > 0 foi
         // digitado; nunca inventamos um valor (chave omitida = undefined no JSON).
         'vision.weight': Number.isFinite(weight) && weight > 0 ? weight : undefined,
+        // Estoque também é obrigatório na Shopee — mesma regra: só grava o que
+        // foi digitado, nunca inventa (0 é um valor válido, então aceitamos).
+        'vision.quantity': Number.isFinite(stock) && stock >= 0 ? Math.floor(stock) : undefined,
         'pricing.purchasePrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
         'pricing.suggestedPrice': Number.isFinite(salePrice) ? salePrice : 0,
         'pricing.profit':
@@ -314,6 +321,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                   value={fields.weight}
                   onChange={(e) => updateField('weight', e.target.value)}
                   placeholder="0,30"
+                />
+              </Field>
+              <Field label="Estoque">
+                <Input
+                  inputMode="numeric"
+                  value={fields.stock}
+                  onChange={(e) => updateField('stock', e.target.value)}
+                  placeholder="10"
                 />
               </Field>
               <Field label="Preço de compra">

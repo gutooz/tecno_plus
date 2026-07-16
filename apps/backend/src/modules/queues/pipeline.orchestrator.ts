@@ -11,6 +11,7 @@ import {
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { AgentLog, AgentLogDocument } from '../database/schemas/agent-log.schema';
 import { VisionAgent } from '../../agents/vision.agent';
+import { WeightAgent } from '../../agents/weight.agent';
 import { MarketAgent } from '../../agents/market/market.agent';
 import { ContentAgent } from '../../agents/content.agent';
 import { ImageAgent } from '../../agents/image.agent';
@@ -36,6 +37,7 @@ export class PipelineOrchestrator {
     @InjectModel(Product.name) private readonly products: Model<ProductDocument>,
     @InjectModel(AgentLog.name) private readonly logs: Model<AgentLogDocument>,
     private readonly vision: VisionAgent,
+    private readonly weight: WeightAgent,
     private readonly market: MarketAgent,
     private readonly content: ContentAgent,
     private readonly image: ImageAgent,
@@ -60,9 +62,12 @@ export class PipelineOrchestrator {
         labelPrice?: number;
         weight?: number;
         weightSource?: 'etiqueta' | 'estimado';
+        length?: number;
+        width?: number;
+        height?: number;
       };
       const hasUserTitle = Boolean(existing.name);
-      const mergedVision = {
+      const mergedVision: Record<string, unknown> = {
         ...out.attributes,
         name: existing.name || out.attributes.name,
         labelPrice: existing.labelPrice ?? out.attributes.labelPrice,
@@ -72,6 +77,25 @@ export class PipelineOrchestrator {
         weight: existing.weight ?? out.attributes.weight,
         weightSource: existing.weight != null ? existing.weightSource : out.attributes.weightSource,
       };
+
+      // Medidas do pacote (comprimento/largura/altura): a visão não lê isso da
+      // foto, então pedimos ao Weight Agent — mesma estimativa por atributos que
+      // roda em "Estimar peso" em lote, só que automática pra todo produto novo.
+      // A Shopee trata as três como um conjunto: sem elas o produto sobe, mas
+      // fica sem envio configurado até alguém preencher.
+      const hasDims = existing.length != null && existing.width != null && existing.height != null;
+      if (!hasDims) {
+        try {
+          const est = await this.weight.run(mergedVision as never);
+          if (est.dimensions) {
+            mergedVision.length = est.dimensions.length;
+            mergedVision.width = est.dimensions.width;
+            mergedVision.height = est.dimensions.height;
+          }
+        } catch (err) {
+          this.logger.warn(`Estimativa de medidas falhou p/ ${data.productId}: ${String(err)}`);
+        }
+      }
 
       // Com título humano, não barra por foto difícil — confiamos no operador.
       const needsReview = !hasUserTitle && out.confidence < PipelineOrchestrator.REVIEW_THRESHOLD;

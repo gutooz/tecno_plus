@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ImagePlus, Save, Trash2, UploadCloud, X } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button, Card, Input } from '@/components/ui';
+import { Button, Card, IconButton, Input } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
 
@@ -22,12 +22,18 @@ interface PendingProduct {
   purchasePrice: string;
   salePrice: string;
   weight: string;
+  stock: string;
 }
 
 interface PendingApiItem {
   _id: string;
   internalSku: string;
-  vision?: { name?: string; labelPrice?: number; weight?: number };
+  vision?: {
+    name?: string;
+    labelPrice?: number;
+    weight?: number;
+    quantity?: number;
+  };
   images?: { original?: string };
 }
 
@@ -90,6 +96,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             purchasePrice: it.vision?.labelPrice ? String(it.vision.labelPrice) : '',
             salePrice: '',
             weight: it.vision?.weight ? String(it.vision.weight) : '',
+            stock: it.vision?.quantity != null ? String(it.vision.quantity) : '',
           })),
         );
       } catch {
@@ -119,7 +126,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
 
   function updateField(
     id: string,
-    field: 'name' | 'purchasePrice' | 'salePrice' | 'weight',
+    field: 'name' | 'purchasePrice' | 'salePrice' | 'weight' | 'stock',
     value: string,
   ) {
     setPending((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
@@ -146,6 +153,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
         purchasePrice: '',
         salePrice: '',
         weight: '',
+        stock: '',
       }));
 
       setPending((prev) => [...prev, ...uploaded]);
@@ -166,6 +174,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
       const purchasePrice = Number(product.purchasePrice.replace(',', '.'));
       const salePrice = Number(product.salePrice.replace(',', '.'));
       const weight = Number(product.weight.replace(',', '.'));
+      const stock = Number(product.stock.replace(',', '.'));
 
       await api.put(`/products/${id}`, {
         'vision.name': product.name,
@@ -173,6 +182,14 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
         // Peso é obrigatório pela Shopee (frete) — só grava se um número > 0 foi
         // digitado; nunca inventamos um valor (chave omitida = undefined no JSON).
         'vision.weight': Number.isFinite(weight) && weight > 0 ? weight : undefined,
+        // Estoque também é obrigatório na Shopee — sem isto o exportador assume 1
+        // por padrão (revisável, mas raramente certo). Mesma regra: nunca inventar.
+        'vision.quantity': Number.isFinite(stock) && stock >= 0 ? Math.floor(stock) : undefined,
+        // GTIN vem sozinho do código de barras que a IA de visão já lê da foto
+        // (vision.ean/vision.barcode) — sem campo manual aqui. Categoria idem: a
+        // Shopee recomenda a categoria certa na importação a partir do
+        // título/descrição; um ID "chutado" pela IA (sem a árvore real de
+        // categorias da Shopee) arriscaria mandar o produto pra categoria errada.
         'pricing.purchasePrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
         'pricing.suggestedPrice': Number.isFinite(salePrice) ? salePrice : 0,
         'pricing.profit':
@@ -202,6 +219,23 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
         `Não foi possível salvar "${product.name}": ${e instanceof Error ? e.message : String(e)}`,
       );
       return false;
+    }
+  }
+
+  /** Remove o pendente sem publicar — some da lista e do backend. */
+  async function deleteOne(id: string) {
+    const product = pending.find((p) => p.id === id);
+    if (!product) return;
+    if (!confirm(`Excluir "${product.name || 'este item'}"? Essa ação não pode ser desfeita.`))
+      return;
+
+    setPending((prev) => prev.map((p) => (p.id === id ? { ...p, saving: true } : p)));
+    try {
+      await api.del(`/products/${id}`);
+      setPending((prev) => prev.filter((p) => p.id !== id));
+    } catch (e) {
+      setPending((prev) => prev.map((p) => (p.id === id ? { ...p, saving: false } : p)));
+      alert(`Não foi possível excluir: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -371,7 +405,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-2 gap-2.5">
                   <label className="block">
                     <span className="mb-1 block text-xs font-medium text-muted">Preço pago</span>
                     <Input
@@ -401,16 +435,35 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                       placeholder="0,30"
                     />
                   </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-muted">Estoque</span>
+                    <Input
+                      inputMode="numeric"
+                      value={product.stock}
+                      onChange={(e) => updateField(product.id, 'stock', e.target.value)}
+                      placeholder="10"
+                    />
+                  </label>
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  loading={product.saving}
-                  disabled={!product.name.trim()}
-                  onClick={() => saveOne(product.id)}
-                >
-                  {product.saving ? 'Salvando…' : 'Salvar'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    loading={product.saving}
+                    disabled={!product.name.trim()}
+                    onClick={() => saveOne(product.id)}
+                  >
+                    {product.saving ? 'Salvando…' : 'Salvar'}
+                  </Button>
+                  <IconButton
+                    tone="danger"
+                    disabled={product.saving}
+                    onClick={() => deleteOne(product.id)}
+                    aria-label="Excluir"
+                  >
+                    <Trash2 size={15} />
+                  </IconButton>
+                </div>
               </Card>
             ))}
           </div>
@@ -426,7 +479,8 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                     <th className="px-3 py-3 font-semibold">Preço pago</th>
                     <th className="px-3 py-3 font-semibold">Preço de venda</th>
                     <th className="px-3 py-3 font-semibold">Peso (kg)</th>
-                    <th className="w-24 px-3 py-3 font-semibold">&nbsp;</th>
+                    <th className="px-3 py-3 font-semibold">Estoque</th>
+                    <th className="w-36 px-3 py-3 font-semibold">&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -478,16 +532,35 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
                           placeholder="0,30"
                         />
                       </td>
+                      <td className="min-w-24 px-3 py-3">
+                        <Input
+                          inputMode="numeric"
+                          value={product.stock}
+                          onChange={(e) => updateField(product.id, 'stock', e.target.value)}
+                          placeholder="10"
+                        />
+                      </td>
                       <td className="px-3 py-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          loading={product.saving}
-                          disabled={!product.name.trim()}
-                          onClick={() => saveOne(product.id)}
-                        >
-                          {product.saving ? '' : 'Salvar'}
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            loading={product.saving}
+                            disabled={!product.name.trim()}
+                            onClick={() => saveOne(product.id)}
+                          >
+                            {product.saving ? '' : 'Salvar'}
+                          </Button>
+                          <IconButton
+                            size="sm"
+                            tone="danger"
+                            disabled={product.saving}
+                            onClick={() => deleteOne(product.id)}
+                            aria-label="Excluir"
+                          >
+                            <Trash2 size={15} />
+                          </IconButton>
+                        </div>
                       </td>
                     </tr>
                   ))}

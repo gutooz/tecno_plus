@@ -141,7 +141,11 @@ function deriveDescription(p: SourceProduct, title: string): string {
 }
 
 function deriveCategory(p: SourceProduct): string {
-  return str(p.content, 'category') || str(p.vision, 'category');
+  // ID numérico digitado pelo operador (tela de cadastro) tem prioridade sobre
+  // a categoria de texto da IA — é o único formato que a coluna aceita.
+  return (
+    str(p.vision, 'shopeeCategoryId') || str(p.content, 'category') || str(p.vision, 'category')
+  );
 }
 
 /**
@@ -221,7 +225,15 @@ export function mapProduct(p: SourceProduct, template: ShopeeTemplate): MappedPr
     if (altura != null) v.altura = altura;
     fillPhotos(v, images);
 
-    const gtin = str(identifiers, 'gtin');
+    // `identifiers.gtin` é o campo "de futuro" (ver comentário em SourceProduct).
+    // `vision.gtin` é uma correção manual, quando existir. Na prática o que mais
+    // aparece é `vision.ean`/`vision.barcode` — o código de barras que a IA de
+    // visão já lê da embalagem na foto (sem precisar o operador digitar nada).
+    const gtin =
+      str(identifiers, 'gtin') ||
+      str(p.vision, 'gtin') ||
+      str(p.vision, 'ean') ||
+      str(p.vision, 'barcode');
     if (gtin) v.gtin = gtin;
     const idsCompat = str(identifiers, 'idsCompatibilidade');
     if (idsCompat) v.ids_compatibilidade = idsCompat;
