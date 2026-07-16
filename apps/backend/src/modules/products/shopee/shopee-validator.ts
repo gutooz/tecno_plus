@@ -106,7 +106,9 @@ export function validate(products: MappedProduct[], template: ShopeeTemplate): I
           i,
           'warning',
           'categoria_ausente',
-          'Categoria vazia. Opcional no arquivo oficial, mas uma categoria imprecisa reduz o alcance do produto na busca.',
+          'Categoria vazia — a Shopee vai recomendar uma na importação. A coluna espera o ID ' +
+            'numérico da Árvore de Categorias (ex.: 120039), e a categoria que a IA infere é texto, ' +
+            'que o importador recusa. Para escolher você mesmo, pegue o ID no Seller Center.',
           'categoria',
         );
       } else if (!/^\d+$/.test(categoria)) {

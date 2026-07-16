@@ -116,6 +116,29 @@ async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
   return wb;
 }
 
+describe('Shopee export — categoria', () => {
+  // A coluna espera o ID da Árvore de Categorias (o exemplo oficial traz 120039).
+  // Texto ali faz o importador recusar o arquivo; vazio a Shopee recomenda sozinha.
+  /** fullProduct() com a categoria trocada — `content` é opcional no tipo. */
+  function comCategoria(category: string): SourceProduct {
+    const p = fullProduct();
+    return { ...p, content: { ...(p.content ?? {}), category } };
+  }
+
+  it('não manda a categoria de texto da IA para a planilha', () => {
+    const mapped = mapProducts(
+      [comCategoria('Beleza e Cuidados Pessoais > Maquiagem > Bases')],
+      REFERENCE_TEMPLATE_BR,
+    );
+    expect(mapped[0].rows[0].values.categoria).toBe('');
+  });
+
+  it('preserva a categoria quando já é um ID numérico da Shopee', () => {
+    const mapped = mapProducts([comCategoria('120039')], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.categoria).toBe('120039');
+  });
+});
+
 describe('Shopee export — workbook', () => {
   it('gera um .xlsx com cabeçalho exato e o produto válido na linha 5', async () => {
     const { buffer, report } = await exportShopeeWorkbook([weighedProduct()], {

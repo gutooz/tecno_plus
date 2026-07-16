@@ -135,6 +135,21 @@ function deriveCategory(p: SourceProduct): string {
   return str(p.content, 'category') || str(p.vision, 'category');
 }
 
+/**
+ * A coluna "Categoria" da Shopee espera o ID numérico da Árvore de Categorias
+ * (o exemplo do arquivo oficial traz `120039`), não um caminho de texto. Nossa
+ * categoria vem da IA como "Beleza > Maquiagem > Bases" — mandar isso ali faz o
+ * importador recusar.
+ *
+ * A coluna é "Opcional" e a instrução oficial diz: em branco, "o sistema
+ * recomendará a categoria para seus produtos". Deixar a Shopee recomendar é
+ * melhor que enviar um valor que ela não entende — e a categoria de texto segue
+ * útil no título/descrição, que é onde ela ajuda na busca.
+ */
+function categoriaParaShopee(category: string): string {
+  return /^\d+$/.test(category.trim()) ? category.trim() : '';
+}
+
 function derivePrice(p: SourceProduct, variation?: SourceVariation): number | undefined {
   if (variation && typeof variation.price === 'number') return variation.price;
   return num(p.pricing, 'suggestedPrice') ?? num(p.vision, 'labelPrice');
@@ -186,7 +201,7 @@ export function mapProduct(p: SourceProduct, template: ShopeeTemplate): MappedPr
   const base = (): Record<string, CellValue> => {
     const v: Record<string, CellValue> = {};
     for (const col of template.columns) v[col.key] = '';
-    v.categoria = category;
+    v.categoria = categoriaParaShopee(category);
     v.nome = title;
     v.descricao = description;
     if (brand) v.marca = brand;
