@@ -24,6 +24,13 @@ function fullProduct(): SourceProduct {
   };
 }
 
+/** Igual ao anterior, mas com peso — único campo obrigatório que a IA não extrai. */
+function weighedProduct(): SourceProduct {
+  const p = fullProduct();
+  (p.vision as Record<string, unknown>).weight = 1.2;
+  return p;
+}
+
 describe('Shopee export — mapper/autofix/validator', () => {
   it('usa o template de referência quando não há arquivo oficial', () => {
     const mapped = mapProducts([fullProduct()], REFERENCE_TEMPLATE_BR);
@@ -101,20 +108,25 @@ describe('Shopee export — mapper/autofix/validator', () => {
   });
 });
 
+const REPORT_SHEETS = ['Validação', 'Corrigidos', 'Rejeitados', 'Leia-me'];
+
+async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
+  return wb;
+}
+
 describe('Shopee export — workbook', () => {
-  it('gera um .xlsx com cabeçalho exato, dados na linha 5 e abas de relatório', async () => {
-    const { buffer, report } = await exportShopeeWorkbook([fullProduct()], {
+  it('gera um .xlsx com cabeçalho exato e o produto válido na linha 5', async () => {
+    const { buffer, report } = await exportShopeeWorkbook([weighedProduct()], {
       generatedAt: GENERATED_AT,
     });
     expect(buffer.length).toBeGreaterThan(0);
     expect(report.templateSource).toBe('reference');
-    expect(report.totalProducts).toBe(1);
-    expect(report.totalRows).toBe(1);
-    expect(report.rejected).toBe(1); // peso ausente
+    expect(report.rejected).toBe(0);
+    expect(report.exportedRows).toBe(1);
 
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
-
+    const wb = await loadWorkbook(buffer);
     const sheet = wb.getWorksheet(REFERENCE_TEMPLATE_BR.sheetName);
     expect(sheet).toBeDefined();
     // Linha 1 = cabeçalhos exatos (iguais aos do arquivo oficial); dados começam na linha 5.
@@ -124,10 +136,38 @@ describe('Shopee export — workbook', () => {
     expect(sheet!.getRow(2).getCell(1).value).toBe('Opcional');
     expect(sheet!.getRow(2).getCell(2).value).toBe('Obrigatório');
     expect(String(sheet!.getRow(5).getCell(2).value)).toContain('Jogo de Copo Imperial');
+  });
 
-    // Abas de relatório presentes.
-    for (const name of ['Validação', 'Corrigidos', 'Rejeitados', 'Leia-me']) {
-      expect(wb.getWorksheet(name)).toBeDefined();
-    }
+  it('o arquivo de upload não leva abas de relatório (o importador recusaria)', async () => {
+    const { buffer } = await exportShopeeWorkbook([weighedProduct()], {
+      generatedAt: GENERATED_AT,
+    });
+    const wb = await loadWorkbook(buffer);
+    expect(wb.worksheets).toHaveLength(1);
+    for (const name of REPORT_SHEETS) expect(wb.getWorksheet(name)).toBeUndefined();
+  });
+
+  it('inclui as abas de conferência quando pedidas explicitamente', async () => {
+    const { buffer } = await exportShopeeWorkbook([weighedProduct()], {
+      generatedAt: GENERATED_AT,
+      includeReportSheets: true,
+    });
+    const wb = await loadWorkbook(buffer);
+    for (const name of REPORT_SHEETS) expect(wb.getWorksheet(name)).toBeDefined();
+  });
+
+  it('produto rejeitado nunca é escrito na aba de dados', async () => {
+    // fullProduct() não tem peso → erro fatal → a Shopee recusaria a linha.
+    const { buffer, report } = await exportShopeeWorkbook([fullProduct()], {
+      generatedAt: GENERATED_AT,
+    });
+    expect(report.rejected).toBe(1);
+    expect(report.exportedProducts).toBe(0);
+    expect(report.exportedRows).toBe(0);
+
+    const wb = await loadWorkbook(buffer);
+    const sheet = wb.getWorksheet(REFERENCE_TEMPLATE_BR.sheetName);
+    // Linha 5 é a 1ª de dados: tem que estar vazia, não pintada de vermelho.
+    expect(sheet!.getRow(5).getCell(2).value).toBeFalsy();
   });
 });

@@ -96,6 +96,17 @@ export class ApiError extends Error {
   }
 }
 
+/** Extrai o `message` do corpo de erro do Nest; cai no statusText se não vier JSON. */
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: string | string[] };
+    const msg = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+    return msg || res.statusText;
+  } catch {
+    return res.statusText;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const token = getToken();
   const headers = new Headers(options.headers);
@@ -105,6 +116,12 @@ async function request<T>(path: string, options: RequestInit = {}, isRetry = fal
   const res = await fetch(`${BASE}/api${path}`, { ...options, headers });
 
   if (res.status === 401) {
+    // Num endpoint de auth, 401 é "credencial errada" — não sessão morta. Redirecionar
+    // aqui recarregaria a página antes do formulário conseguir exibir o erro, e o
+    // usuário voltaria pro login sem explicação nenhuma.
+    if (path.startsWith('/auth/')) {
+      throw new ApiError(401, await errorMessage(res));
+    }
     if (!isRetry && getRefreshToken()) {
       const newToken = await ensureFreshToken();
       if (newToken) return request<T>(path, options, true);

@@ -50,20 +50,37 @@ export class ProductsController {
     });
   }
 
+  /**
+   * `?report=1` devolve a versão anotada (com as abas Validação/Corrigidos/
+   * Rejeitados/Leia-me) para conferência. O arquivo padrão vai limpo, porque o
+   * importador do Seller Center espera a estrutura exata do template.
+   */
   @Get('export/shopee')
   @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   async exportShopee(
     @CurrentUser() user: AuthUser,
     @Res() res: Response,
     @Query('ids') ids?: string,
+    @Query('report') report?: string,
   ) {
     const selectedIds = ids
       ?.split(',')
       .map((id) => id.trim())
       .filter(Boolean);
-    const buffer = await this.products.exportShopee(user.id, selectedIds);
+    const withReport = report === '1' || report === 'true';
+    const { buffer, report: summary } = await this.products.exportShopee(user.id, selectedIds, {
+      includeReportSheets: withReport,
+    });
     const stamp = new Date().toISOString().slice(0, 10);
-    res.setHeader('Content-Disposition', `attachment; filename="shopee-lote-${stamp}.xlsx"`);
+    const suffix = withReport ? '-conferencia' : '';
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="shopee-lote-${stamp}${suffix}.xlsx"`,
+    );
+    // O relatório antes só existia no log do servidor — quem baixava não tinha
+    // como saber que produtos ficaram de fora, nem qual template foi usado.
+    res.setHeader('X-Shopee-Export-Report', JSON.stringify(summary));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Shopee-Export-Report');
     res.send(buffer);
   }
 

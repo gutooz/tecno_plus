@@ -26,11 +26,16 @@ export interface BuildWorkbookParams {
   rejected: Set<string>;
   warning?: string;
   generatedAtISO: string;
+  /**
+   * Anexa as abas Validação/Corrigidos/Rejeitados/Leia-me. Deixe `false` (padrão)
+   * para o arquivo que vai ser importado: o Seller Center espera a estrutura do
+   * template, e abas extras fazem o importador recusar o arquivo inteiro.
+   */
+  includeReportSheets?: boolean;
 }
 
 const SHOPEE_ORANGE = 'FFEE4D2D';
 const HEADER_GREY = 'FFF2F2F2';
-const REJECT_RED = 'FFFCE8E6';
 
 function widthFor(col: ShopeeColumn): number {
   if (col.key === 'descricao' || col.key === 'info_adicional') return 50;
@@ -78,28 +83,28 @@ function writeReferenceSheet(wb: ExcelJS.Workbook, params: BuildWorkbookParams):
   sheet.addRow(cols.map((c) => c.note ?? ''));
   styleInstructionRows(sheet, cols.length);
 
-  // Dados a partir da linha 5.
+  // Dados a partir da linha 5. Produtos rejeitados NÃO entram: a Shopee recusaria
+  // a linha de qualquer jeito, e destacá-la em vermelho não significa nada para o
+  // importador — só garante um lote que falha. Eles saem listados na aba Rejeitados.
   for (const mp of products) {
-    const isRejected = rejected.has(mp.productId);
+    if (rejected.has(mp.productId)) continue;
     for (const row of mp.rows) {
       const added = sheet.addRow(cols.map((c) => row.values[c.key] ?? ''));
       added.alignment = { vertical: 'top', wrapText: true };
-      if (isRejected) {
-        added.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: REJECT_RED } };
-      }
     }
   }
 }
 
 /** Anexa os dados ao worksheet do arquivo oficial (modo official-file). */
 function appendToOfficialSheet(params: BuildWorkbookParams): void {
-  const { template, products } = params;
+  const { template, products, rejected } = params;
   const ws = template.officialWorksheet;
   if (!ws) return;
   const cols = template.columns;
   // Começa após o conteúdo existente, nunca antes da 1ª linha de dados.
   let cursor = Math.max(template.dataStartRow, (ws.actualRowCount || 0) + 1);
   for (const mp of products) {
+    if (rejected.has(mp.productId)) continue;
     for (const row of mp.rows) {
       const target = ws.getRow(cursor++);
       cols.forEach((c, i) => {
@@ -251,10 +256,12 @@ export async function buildWorkbook(params: BuildWorkbookParams): Promise<Buffer
     writeReferenceSheet(wb, params);
   }
 
-  buildValidationSheet(wb, params);
-  buildCorrectionsSheet(wb, params);
-  buildRejectedSheet(wb, params);
-  buildReadmeSheet(wb, params);
+  if (params.includeReportSheets) {
+    buildValidationSheet(wb, params);
+    buildCorrectionsSheet(wb, params);
+    buildRejectedSheet(wb, params);
+    buildReadmeSheet(wb, params);
+  }
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
