@@ -54,4 +54,46 @@ describe('WeightAgent', () => {
     const out = await agentReturning({ weight: 1, reasoning: '', confidence: 7 }).run(VISION);
     expect(out.confidence).toBe(1);
   });
+
+  describe('dimensões', () => {
+    const COM_MEDIDAS = {
+      weight: 0.35,
+      length: 20,
+      width: 15,
+      height: 8,
+      reasoning: '',
+      confidence: 0.7,
+    };
+
+    it('aceita as três medidas juntas', async () => {
+      const out = await agentReturning(COM_MEDIDAS).run(VISION);
+      expect(out.dimensions).toEqual({ length: 20, width: 15, height: 8 });
+    });
+
+    // A Shopee trata dimensão como conjunto: meia medida faz ela acusar dado
+    // incompleto. Melhor devolver nada e deixar o produto pendente.
+    it.each(['length', 'width', 'height'])('descarta o conjunto se %s faltar', async (campo) => {
+      const parcial = { ...COM_MEDIDAS, [campo]: null };
+      const out = await agentReturning(parcial).run(VISION);
+      expect(out.dimensions).toBeNull();
+      expect(out.weight).toBe(0.35); // o peso sobrevive
+    });
+
+    it.each([
+      ['zero', 0],
+      ['negativa', -5],
+      ['acima de 1000cm (mm trocado por cm)', 2000],
+    ])('recusa medida %s', async (_label, value) => {
+      const out = await agentReturning({ ...COM_MEDIDAS, width: value }).run(VISION);
+      expect(out.dimensions).toBeNull();
+    });
+
+    it('não quebra quando a IA devolve só o peso', async () => {
+      const out = await agentReturning({ weight: 0.35, reasoning: '', confidence: 0.5 }).run(
+        VISION,
+      );
+      expect(out.weight).toBe(0.35);
+      expect(out.dimensions).toBeNull();
+    });
+  });
 });

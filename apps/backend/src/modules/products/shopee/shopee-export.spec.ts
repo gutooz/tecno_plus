@@ -139,6 +139,28 @@ describe('Shopee export — categoria', () => {
   });
 });
 
+describe('Shopee export — canal de envio', () => {
+  // Sem canal a Shopee recusa: "Produto não pode ser salvo sem um canal de envio
+  // habilitado". E o dropdown do arquivo oficial só aceita "Ligado"/"Desativado" —
+  // 'Ativar'/'Off' (o que havia antes) eram recusados pela validação.
+  it('habilita o Xpress CPF por padrão, com a grafia que o dropdown aceita', () => {
+    const mapped = mapProducts([fullProduct()], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.canal_xpress_cpf).toBe('Ligado');
+  });
+
+  it('respeita a desativação explícita', () => {
+    const p = { ...fullProduct(), logistics: { canalXpressCpf: false } };
+    const mapped = mapProducts([p], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.canal_xpress_cpf).toBe('Desativado');
+  });
+
+  // "Please do not edit this column" no arquivo oficial.
+  it('não escreve na coluna Retirada pelo Comprador', () => {
+    const mapped = mapProducts([fullProduct()], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.canal_retirada_comprador).toBe('');
+  });
+});
+
 describe('Shopee export — workbook', () => {
   it('gera um .xlsx com cabeçalho exato e o produto válido na linha 5', async () => {
     const { buffer, report } = await exportShopeeWorkbook([weighedProduct()], {

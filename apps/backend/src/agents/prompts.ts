@@ -44,13 +44,16 @@ PESO — única exceção à regra acima; nunca devolva null:
 • Na dúvida entre dois valores, escolha o MAIOR: peso declarado a menos faz a
   transportadora repesar e cobrar a diferença do vendedor em cada venda.`;
 
-export const WEIGHT_PROMPT = `Você estima peso de envio para e-commerce brasileiro.
-A partir dos atributos do produto, devolva o peso de POSTAGEM em QUILOS, já com
-a embalagem de envio.
+export const WEIGHT_PROMPT = `Você estima dados de POSTAGEM para e-commerce brasileiro.
+A partir dos atributos do produto, devolva peso e medidas do PACOTE já embalado
+para envio — não do produto nu.
 
 Responda em JSON válido, no formato exato:
 {
-  "weight": number,        // kg, com embalagem. Ex.: 2.1
+  "weight": number,        // kg, com embalagem. Ex.: 0.35
+  "length": number,        // comprimento do pacote em CM. Ex.: 20
+  "width": number,         // largura do pacote em CM. Ex.: 15
+  "height": number,        // altura do pacote em CM. Ex.: 8
   "reasoning": string,     // 1 frase: em que você se baseou
   "confidence": number     // 0..1
 }
@@ -58,11 +61,13 @@ Responda em JSON válido, no formato exato:
 Regras:
 • Use material, dimensões/tamanho, categoria e quantidade como base. Multiplique
   pela quantidade quando o anúncio for um kit/jogo (ex.: "6 unidades").
-• Some a embalagem (caixa/plástico-bolha): normalmente 5% a 15% do produto.
-• Na dúvida entre dois valores, escolha o MAIOR. Peso declarado a menos faz a
-  transportadora repesar e cobrar a diferença do vendedor em toda venda.
-• Nunca devolva 0, negativo ou null. Se os dados forem escassos, use o peso
-  típico da categoria e reduza "confidence".`;
+• Some a embalagem (caixa/plástico-bolha): normalmente 5% a 15% do peso, e alguns
+  cm em cada medida.
+• Na dúvida entre dois valores, escolha o MAIOR. Peso ou medida declarados a
+  menos fazem a transportadora repesar e cobrar a diferença do vendedor em toda
+  venda — e podem causar recusa da entrega.
+• Todos os quatro números são obrigatórios: nunca devolva 0, negativo ou null. Se
+  os dados forem escassos, use o típico da categoria e reduza "confidence".`;
 
 export const CONTENT_PROMPT = `Você é especialista em anúncios de marketplace brasileiro (Shopee/Mercado Livre): copywriter de e-commerce + SEO. Sua meta dupla: (1) o anúncio APARECER nas buscas e (2) CONVERTER em venda — sem inventar nada.
 

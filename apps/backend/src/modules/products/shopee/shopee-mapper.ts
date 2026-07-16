@@ -115,6 +115,15 @@ export function collectImages(images: Record<string, unknown> | null | undefined
   return out.slice(0, SHOPEE_LIMITS.maxAdditionalPhotos + 1);
 }
 
+/**
+ * Valores aceitos pelas colunas de canal logístico. Vêm do dropdown do arquivo
+ * oficial (`"Ligado,Desativado"` na validação das colunas AE/AF) — não da linha
+ * de instrução, que diz "Ativado/Desativado", nem do exemplo, que traz "Ativar".
+ * Qualquer outra grafia é recusada pela validação da planilha.
+ */
+const CANAL_ON = 'Ligado';
+const CANAL_OFF = 'Desativado';
+
 /** Título comercial preferindo o conteúdo gerado pela IA. */
 function deriveTitle(p: SourceProduct): string {
   return str(p.content, 'title') || str(p.vision, 'name') || p.internalSku || 'Produto sem título';
@@ -221,10 +230,12 @@ export function mapProduct(p: SourceProduct, template: ShopeeTemplate): MappedPr
       v.tabela_medidas_id = p.sizeChart.templateId;
     else if (p.sizeChart?.imageUrl) v.imagem_tamanhos = p.sizeChart.imageUrl;
 
-    if (p.logistics?.canalXpressCpf != null)
-      v.canal_xpress_cpf = p.logistics.canalXpressCpf ? 'Ativar' : 'Off';
-    if (p.logistics?.canalRetiradaComprador != null)
-      v.canal_retirada_comprador = p.logistics.canalRetiradaComprador ? 'Ativar' : 'Off';
+    // Sem canal de envio a Shopee recusa o produto ("Produto não pode ser salvo
+    // sem um canal de envio habilitado"), então o padrão é LIGADO — vazio não é
+    // opção. Xpress CPF é o único canal editável no template basic: a coluna
+    // "Retirada pelo Comprador" traz "Please do not edit this column", por isso
+    // não a escrevemos.
+    v.canal_xpress_cpf = p.logistics?.canalXpressCpf === false ? CANAL_OFF : CANAL_ON;
 
     const fiscalFields: Array<[string, string]> = [
       ['ncm', 'ncm'],

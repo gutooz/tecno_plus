@@ -5,6 +5,9 @@ import { WEIGHT_PROMPT } from './prompts';
 
 interface WeightRawResult {
   weight: number;
+  length: number;
+  width: number;
+  height: number;
   reasoning: string;
   confidence: number;
 }
@@ -12,6 +15,11 @@ interface WeightRawResult {
 export interface WeightOutcome {
   /** kg com embalagem, ou null se a IA não devolveu número utilizável. */
   weight: number | null;
+  /**
+   * Medidas do pacote em cm. As três juntas ou nenhuma: a Shopee trata dimensão
+   * como conjunto (o validador acusa `dimensoes_incompletas` se vier pela metade).
+   */
+  dimensions: { length: number; width: number; height: number } | null;
   reasoning: string;
   confidence: number;
   usage: { provider: string; model: string; inputTokens: number; outputTokens: number };
@@ -66,8 +74,16 @@ export class WeightAgent {
       this.logger.warn(`Peso não estimado para "${vision.name ?? '(sem nome)'}" — fica pendente.`);
     }
 
+    // Tudo ou nada: meia dimensão faz a Shopee acusar dado incompleto.
+    const length = normalizeDimension(res.data?.length);
+    const width = normalizeDimension(res.data?.width);
+    const height = normalizeDimension(res.data?.height);
+    const dimensions =
+      length != null && width != null && height != null ? { length, width, height } : null;
+
     return {
       weight,
+      dimensions,
       reasoning: res.data?.reasoning ?? '',
       confidence: clamp01(res.data?.confidence ?? 0),
       usage: {
@@ -92,6 +108,17 @@ function normalizeWeight(value: unknown): number | null {
   // um número desses é alucinação (ou gramas trocadas por quilos).
   if (n > 100) return null;
   return Number(n.toFixed(3));
+}
+
+/**
+ * Medida em cm. Mesma lógica do peso: melhor vazio que absurdo. O teto de 1000cm
+ * (10m) é folgado para qualquer encomenda — acima disso é alucinação ou unidade
+ * trocada (mm por cm).
+ */
+function normalizeDimension(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0 || n > 1000) return null;
+  return Number(n.toFixed(1));
 }
 
 function clamp01(n: number): number {
