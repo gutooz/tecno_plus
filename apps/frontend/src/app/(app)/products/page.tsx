@@ -12,6 +12,7 @@ import {
   Download,
   Plus,
   PackageOpen,
+  Scale,
   Sparkles,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -45,6 +46,7 @@ export default function ProductsPage() {
   const [publishing, setPublishing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [estimatingWeight, setEstimatingWeight] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, page],
@@ -143,6 +145,37 @@ export default function ProductsPage() {
     }
   }
 
+  async function estimateWeightSelected() {
+    if (!selected.size) return;
+    if (
+      !confirm(
+        `A IA vai ESTIMAR o peso de envio de ${selected.size} produto(s) que estão sem peso — ` +
+          `estimativa, não medição, e é ela que define o frete na Shopee. ` +
+          `Quem já tem peso não é tocado. Continuar?`,
+      )
+    )
+      return;
+    setEstimatingWeight(true);
+    try {
+      const res = await api.post<{
+        total: number;
+        filled: number;
+        failed: number;
+        skipped: number;
+      }>('/products/estimate-weight-batch', { ids: [...selected] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      alert(
+        `${res.filled} peso(s) estimado(s).\n` +
+          `${res.skipped} já tinha(m) peso (preservado).\n` +
+          `${res.failed} sem estimativa — preencha na mão antes de exportar.`,
+      );
+    } catch (e) {
+      alert(`Não foi possível estimar o peso: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setEstimatingWeight(false);
+    }
+  }
+
   const allChecked = Boolean(data?.items.length) && selected.size === data?.items.length;
   const isEmpty = data && data.items.length === 0 && !isLoading;
 
@@ -189,6 +222,15 @@ export default function ProductsPage() {
             >
               {!regenerating && <Sparkles size={15} />}
               {regenerating ? 'Enviando…' : `Regenerar imagens (${selected.size})`}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              loading={estimatingWeight}
+              onClick={estimateWeightSelected}
+            >
+              {!estimatingWeight && <Scale size={15} />}
+              {estimatingWeight ? 'Estimando…' : `Estimar peso (${selected.size})`}
             </Button>
             <Button variant="outline" size="sm" loading={exporting} onClick={exportSelected}>
               {!exporting && <Download size={15} />}
