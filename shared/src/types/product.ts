@@ -22,6 +22,14 @@ export interface ProductVisionAttributes {
   labelPrice?: number; // preço da etiqueta, se visível
   shortDescription?: string;
   features?: string[];
+  /** Peso em kg com embalagem. Obrigatório na Shopee — define o frete. */
+  weight?: number;
+  /**
+   * De onde saiu o `weight`. `etiqueta` foi lido da foto; `estimado` a IA
+   * deduziu de material/tamanho/quantidade — não é medição. Serve para achar
+   * os produtos a reconferir se o frete cobrado vier errado.
+   */
+  weightSource?: 'etiqueta' | 'estimado';
 }
 
 /** Resultado de pesquisa de mercado (Agente 2). */

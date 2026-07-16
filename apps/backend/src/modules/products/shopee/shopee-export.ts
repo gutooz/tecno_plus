@@ -34,6 +34,24 @@ export interface ShopeeExportResult {
   report: ShopeeExportReport;
 }
 
+/**
+ * Serializa o relatório para caber num header HTTP.
+ *
+ * Header só aceita Latin-1, e o relatório carrega texto em português — acento e
+ * travessão (ex.: "esquema de referência BR — para 100%…"). Passar o JSON cru
+ * faz `res.setHeader` lançar ERR_INVALID_CHAR e derrubar a resposta inteira com
+ * um 500, mesmo com o .xlsx já pronto na mão.
+ *
+ * Escapar para `\uXXXX` mantém tudo ASCII e continua sendo JSON válido: um
+ * `JSON.parse` do outro lado devolve o texto acentuado original.
+ */
+export function encodeReportHeader(report: ShopeeExportReport): string {
+  return JSON.stringify(report).replace(
+    /[^\x20-\x7e]/g,
+    (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+}
+
 export async function exportShopeeWorkbook(
   products: SourceProduct[],
   opts?: { templatePath?: string; generatedAt?: Date; includeReportSheets?: boolean },

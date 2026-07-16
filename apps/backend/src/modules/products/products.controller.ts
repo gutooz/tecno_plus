@@ -17,6 +17,7 @@ import { MarketplaceChannel, ProductStatus } from '@tecnoplus/shared';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
 import { ProductsService } from './products.service';
+import { encodeReportHeader } from './shopee';
 import { PublishService } from '../publish/publish.service';
 
 @ApiTags('products')
@@ -79,7 +80,8 @@ export class ProductsController {
     );
     // O relatório antes só existia no log do servidor — quem baixava não tinha
     // como saber que produtos ficaram de fora, nem qual template foi usado.
-    res.setHeader('X-Shopee-Export-Report', JSON.stringify(summary));
+    // Vai escapado: header não aceita os acentos do texto (ver encodeReportHeader).
+    res.setHeader('X-Shopee-Export-Report', encodeReportHeader(summary));
     res.setHeader('Access-Control-Expose-Headers', 'X-Shopee-Export-Report');
     res.send(buffer);
   }
@@ -95,6 +97,15 @@ export class ProductsController {
   @Post('regenerate-images-batch')
   regenerateImagesBatch(@CurrentUser() user: AuthUser, @Body() body: { ids?: string[] }) {
     return this.products.regenerateImagesBatch(user.id, body.ids ?? []);
+  }
+
+  /**
+   * Estima por IA o peso dos produtos que estão sem — sem `ids`, varre o catálogo
+   * inteiro do dono. Não toca em quem já tem peso.
+   */
+  @Post('estimate-weight-batch')
+  estimateWeightBatch(@CurrentUser() user: AuthUser, @Body() body: { ids?: string[] }) {
+    return this.products.estimateWeightBatch(user.id, body.ids ?? []);
   }
 
   @Get(':id')
