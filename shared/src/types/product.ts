@@ -25,6 +25,13 @@ export interface ProductVisionAttributes {
   /** Peso em kg com embalagem. Obrigatório na Shopee — define o frete. */
   weight?: number;
   /**
+   * Medidas do pacote em cm. A Shopee exige as três juntas — sem elas o produto
+   * não é salvo ("Este campo não pode ficar em branco").
+   */
+  length?: number;
+  width?: number;
+  height?: number;
+  /**
    * De onde saiu o `weight`. `etiqueta` foi lido da foto; `estimado` a IA
    * deduziu de material/tamanho/quantidade — não é medição. Serve para achar
    * os produtos a reconferir se o frete cobrado vier errado.

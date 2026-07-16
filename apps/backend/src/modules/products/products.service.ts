@@ -196,17 +196,28 @@ export class ProductsService {
    * descrição e preço — caro e destrutivo para quem só precisa de peso. Aqui só
    * `vision.weight` é tocado.
    *
-   * Quem JÁ tem peso é pulado: aquele valor veio de medição ou da tela do
-   * operador, e estimativa não sobrescreve medição.
+   * Cada campo é preenchido só se estiver faltando: o que já existe veio de
+   * medição ou da tela do operador, e estimativa não sobrescreve medição. Um
+   * produto com peso medido e sem medidas ganha só as medidas.
    */
   async estimateWeightBatch(ownerId: string, ids: string[]) {
     const filter: FilterQuery<ProductDocument> = { ownerId };
     if (ids.length) filter._id = { $in: ids };
 
     const docs = await this.model.find(filter, { _id: 1, vision: 1 }).lean();
+
+    const num = (v: unknown): boolean => typeof v === 'number' && v > 0;
+    const gaps = (d: (typeof docs)[number]) => {
+      const v = (d.vision ?? {}) as Record<string, unknown>;
+      return {
+        peso: !num(v.weight),
+        // A Shopee trata dimensão como conjunto — falta uma, faltam todas.
+        medidas: !num(v.length) || !num(v.width) || !num(v.height),
+      };
+    };
     const pending = docs.filter((d) => {
-      const w = (d.vision as { weight?: number } | undefined)?.weight;
-      return typeof w !== 'number' || w <= 0;
+      const g = gaps(d);
+      return g.peso || g.medidas;
     });
 
     let filled = 0;
@@ -215,30 +226,43 @@ export class ProductsService {
     // Promise.all aqui trocaria 19 chamadas tranquilas por 19 chances de 429.
     for (const doc of pending) {
       const id = String(doc._id);
+      const g = gaps(doc);
       try {
         const out = await this.weight.run((doc.vision ?? {}) as never);
-        if (out.weight == null) {
+
+        const set: Record<string, unknown> = {};
+        if (g.peso && out.weight != null) {
+          set['vision.weight'] = out.weight;
+          set['vision.weightSource'] = 'estimado';
+        }
+        // Sem as três, a Shopee acusa "Este campo não pode ficar em branco" —
+        // e meia dimensão é pior que nenhuma.
+        if (g.medidas && out.dimensions) {
+          set['vision.length'] = out.dimensions.length;
+          set['vision.width'] = out.dimensions.width;
+          set['vision.height'] = out.dimensions.height;
+        }
+        if (!Object.keys(set).length) {
           failed.push(id);
           continue;
         }
-        await this.model.updateOne(
-          { _id: id },
-          { $set: { 'vision.weight': out.weight, 'vision.weightSource': 'estimado' } },
-        );
+
+        await this.model.updateOne({ _id: id }, { $set: set });
         filled++;
         this.logger.log(
-          `Peso estimado ${out.weight}kg (confiança ${out.confidence.toFixed(2)}) p/ ${id}: ${out.reasoning}`,
+          `Envio estimado p/ ${id}: ${JSON.stringify(set)} ` +
+            `(confiança ${out.confidence.toFixed(2)}) — ${out.reasoning}`,
         );
       } catch (err) {
         failed.push(id);
-        this.logger.warn(`Falha ao estimar peso de ${id}: ${String(err)}`);
+        this.logger.warn(`Falha ao estimar envio de ${id}: ${String(err)}`);
       }
     }
 
     const skipped = docs.length - pending.length;
     this.logger.log(
-      `Estimativa de peso: ${filled} preenchido(s), ${failed.length} falha(s), ` +
-        `${skipped} já tinha(m) peso (preservado).`,
+      `Estimativa de envio: ${filled} preenchido(s), ${failed.length} falha(s), ` +
+        `${skipped} já completo(s).`,
     );
     return { total: docs.length, filled, failed: failed.length, skipped };
   }

@@ -116,6 +116,51 @@ async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
   return wb;
 }
 
+describe('Shopee export — categoria', () => {
+  // A coluna espera o ID da Árvore de Categorias (o exemplo oficial traz 120039).
+  // Texto ali faz o importador recusar o arquivo; vazio a Shopee recomenda sozinha.
+  /** fullProduct() com a categoria trocada — `content` é opcional no tipo. */
+  function comCategoria(category: string): SourceProduct {
+    const p = fullProduct();
+    return { ...p, content: { ...(p.content ?? {}), category } };
+  }
+
+  it('não manda a categoria de texto da IA para a planilha', () => {
+    const mapped = mapProducts(
+      [comCategoria('Beleza e Cuidados Pessoais > Maquiagem > Bases')],
+      REFERENCE_TEMPLATE_BR,
+    );
+    expect(mapped[0].rows[0].values.categoria).toBe('');
+  });
+
+  it('preserva a categoria quando já é um ID numérico da Shopee', () => {
+    const mapped = mapProducts([comCategoria('120039')], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.categoria).toBe('120039');
+  });
+});
+
+describe('Shopee export — canal de envio', () => {
+  // Sem canal a Shopee recusa: "Produto não pode ser salvo sem um canal de envio
+  // habilitado". E o dropdown do arquivo oficial só aceita "Ligado"/"Desativado" —
+  // 'Ativar'/'Off' (o que havia antes) eram recusados pela validação.
+  it('habilita o Xpress CPF por padrão, com a grafia que o dropdown aceita', () => {
+    const mapped = mapProducts([fullProduct()], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.canal_xpress_cpf).toBe('Ligado');
+  });
+
+  it('respeita a desativação explícita', () => {
+    const p = { ...fullProduct(), logistics: { canalXpressCpf: false } };
+    const mapped = mapProducts([p], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.canal_xpress_cpf).toBe('Desativado');
+  });
+
+  // "Please do not edit this column" no arquivo oficial.
+  it('não escreve na coluna Retirada pelo Comprador', () => {
+    const mapped = mapProducts([fullProduct()], REFERENCE_TEMPLATE_BR);
+    expect(mapped[0].rows[0].values.canal_retirada_comprador).toBe('');
+  });
+});
+
 describe('Shopee export — workbook', () => {
   it('gera um .xlsx com cabeçalho exato e o produto válido na linha 5', async () => {
     const { buffer, report } = await exportShopeeWorkbook([weighedProduct()], {

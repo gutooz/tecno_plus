@@ -115,6 +115,15 @@ export function collectImages(images: Record<string, unknown> | null | undefined
   return out.slice(0, SHOPEE_LIMITS.maxAdditionalPhotos + 1);
 }
 
+/**
+ * Valores aceitos pelas colunas de canal logístico. Vêm do dropdown do arquivo
+ * oficial (`"Ligado,Desativado"` na validação das colunas AE/AF) — não da linha
+ * de instrução, que diz "Ativado/Desativado", nem do exemplo, que traz "Ativar".
+ * Qualquer outra grafia é recusada pela validação da planilha.
+ */
+const CANAL_ON = 'Ligado';
+const CANAL_OFF = 'Desativado';
+
 /** Título comercial preferindo o conteúdo gerado pela IA. */
 function deriveTitle(p: SourceProduct): string {
   return str(p.content, 'title') || str(p.vision, 'name') || p.internalSku || 'Produto sem título';
@@ -133,6 +142,21 @@ function deriveDescription(p: SourceProduct, title: string): string {
 
 function deriveCategory(p: SourceProduct): string {
   return str(p.content, 'category') || str(p.vision, 'category');
+}
+
+/**
+ * A coluna "Categoria" da Shopee espera o ID numérico da Árvore de Categorias
+ * (o exemplo do arquivo oficial traz `120039`), não um caminho de texto. Nossa
+ * categoria vem da IA como "Beleza > Maquiagem > Bases" — mandar isso ali faz o
+ * importador recusar.
+ *
+ * A coluna é "Opcional" e a instrução oficial diz: em branco, "o sistema
+ * recomendará a categoria para seus produtos". Deixar a Shopee recomendar é
+ * melhor que enviar um valor que ela não entende — e a categoria de texto segue
+ * útil no título/descrição, que é onde ela ajuda na busca.
+ */
+function categoriaParaShopee(category: string): string {
+  return /^\d+$/.test(category.trim()) ? category.trim() : '';
 }
 
 function derivePrice(p: SourceProduct, variation?: SourceVariation): number | undefined {
@@ -186,7 +210,7 @@ export function mapProduct(p: SourceProduct, template: ShopeeTemplate): MappedPr
   const base = (): Record<string, CellValue> => {
     const v: Record<string, CellValue> = {};
     for (const col of template.columns) v[col.key] = '';
-    v.categoria = category;
+    v.categoria = categoriaParaShopee(category);
     v.nome = title;
     v.descricao = description;
     if (brand) v.marca = brand;
@@ -206,10 +230,12 @@ export function mapProduct(p: SourceProduct, template: ShopeeTemplate): MappedPr
       v.tabela_medidas_id = p.sizeChart.templateId;
     else if (p.sizeChart?.imageUrl) v.imagem_tamanhos = p.sizeChart.imageUrl;
 
-    if (p.logistics?.canalXpressCpf != null)
-      v.canal_xpress_cpf = p.logistics.canalXpressCpf ? 'Ativar' : 'Off';
-    if (p.logistics?.canalRetiradaComprador != null)
-      v.canal_retirada_comprador = p.logistics.canalRetiradaComprador ? 'Ativar' : 'Off';
+    // Sem canal de envio a Shopee recusa o produto ("Produto não pode ser salvo
+    // sem um canal de envio habilitado"), então o padrão é LIGADO — vazio não é
+    // opção. Xpress CPF é o único canal editável no template basic: a coluna
+    // "Retirada pelo Comprador" traz "Please do not edit this column", por isso
+    // não a escrevemos.
+    v.canal_xpress_cpf = p.logistics?.canalXpressCpf === false ? CANAL_OFF : CANAL_ON;
 
     const fiscalFields: Array<[string, string]> = [
       ['ncm', 'ncm'],
