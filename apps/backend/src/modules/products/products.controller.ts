@@ -99,6 +99,15 @@ export class ProductsController {
     return this.products.regenerateImagesBatch(user.id, body.ids ?? []);
   }
 
+  /**
+   * Estima por IA o peso dos produtos que estão sem — sem `ids`, varre o catálogo
+   * inteiro do dono. Não toca em quem já tem peso.
+   */
+  @Post('estimate-weight-batch')
+  estimateWeightBatch(@CurrentUser() user: AuthUser, @Body() body: { ids?: string[] }) {
+    return this.products.estimateWeightBatch(user.id, body.ids ?? []);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.products.findById(user.id, id);

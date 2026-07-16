@@ -55,12 +55,22 @@ export class PipelineOrchestrator {
 
       // Preserva TÍTULO e PREÇO informados pelo operador (fluxo Telegram):
       // a visão enriquece marca/categoria, mas não sobrescreve o que o humano deu.
-      const existing = (product.vision ?? {}) as { name?: string; labelPrice?: number };
+      const existing = (product.vision ?? {}) as {
+        name?: string;
+        labelPrice?: number;
+        weight?: number;
+        weightSource?: 'etiqueta' | 'estimado';
+      };
       const hasUserTitle = Boolean(existing.name);
       const mergedVision = {
         ...out.attributes,
         name: existing.name || out.attributes.name,
         labelPrice: existing.labelPrice ?? out.attributes.labelPrice,
+        // Mesmo princípio para o PESO: o que já existe veio de medição ou da tela
+        // do operador; o da IA é estimativa. Estimativa não sobrescreve medição —
+        // e peso errado é frete cobrado errado em toda venda.
+        weight: existing.weight ?? out.attributes.weight,
+        weightSource: existing.weight != null ? existing.weightSource : out.attributes.weightSource,
       };
 
       // Com título humano, não barra por foto difícil — confiamos no operador.

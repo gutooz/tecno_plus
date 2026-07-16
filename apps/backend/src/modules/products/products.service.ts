@@ -5,6 +5,7 @@ import { ProductStatus, QueueName } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { QueueService } from '../queues/queue.service';
 import { ImageAgent } from '../../agents/image.agent';
+import { WeightAgent } from '../../agents/weight.agent';
 import { exportShopeeWorkbook, ShopeeExportResult, SourceProduct } from './shopee';
 
 export interface ListProductsQuery {
@@ -36,6 +37,7 @@ export class ProductsService {
     @InjectModel(Product.name) private readonly model: Model<ProductDocument>,
     private readonly queue: QueueService,
     private readonly image: ImageAgent,
+    private readonly weight: WeightAgent,
   ) {}
 
   async list(q: ListProductsQuery) {
@@ -185,6 +187,60 @@ export class ProductsService {
       docs.map((d) => this.queue.enqueue(QueueName.IMAGE, { productId: String(d._id), ownerId })),
     );
     return { queued: docs.length };
+  }
+
+  /**
+   * Preenche o peso dos produtos que estão sem, estimando pela IA.
+   *
+   * Cirúrgico de propósito: reprocessar pelo pipeline completo regeraria título,
+   * descrição e preço — caro e destrutivo para quem só precisa de peso. Aqui só
+   * `vision.weight` é tocado.
+   *
+   * Quem JÁ tem peso é pulado: aquele valor veio de medição ou da tela do
+   * operador, e estimativa não sobrescreve medição.
+   */
+  async estimateWeightBatch(ownerId: string, ids: string[]) {
+    const filter: FilterQuery<ProductDocument> = { ownerId };
+    if (ids.length) filter._id = { $in: ids };
+
+    const docs = await this.model.find(filter, { _id: 1, vision: 1 }).lean();
+    const pending = docs.filter((d) => {
+      const w = (d.vision as { weight?: number } | undefined)?.weight;
+      return typeof w !== 'number' || w <= 0;
+    });
+
+    let filled = 0;
+    const failed: string[] = [];
+    // Sequencial: são poucos produtos e o provedor de IA tem rate limit — um
+    // Promise.all aqui trocaria 19 chamadas tranquilas por 19 chances de 429.
+    for (const doc of pending) {
+      const id = String(doc._id);
+      try {
+        const out = await this.weight.run((doc.vision ?? {}) as never);
+        if (out.weight == null) {
+          failed.push(id);
+          continue;
+        }
+        await this.model.updateOne(
+          { _id: id },
+          { $set: { 'vision.weight': out.weight, 'vision.weightSource': 'estimado' } },
+        );
+        filled++;
+        this.logger.log(
+          `Peso estimado ${out.weight}kg (confiança ${out.confidence.toFixed(2)}) p/ ${id}: ${out.reasoning}`,
+        );
+      } catch (err) {
+        failed.push(id);
+        this.logger.warn(`Falha ao estimar peso de ${id}: ${String(err)}`);
+      }
+    }
+
+    const skipped = docs.length - pending.length;
+    this.logger.log(
+      `Estimativa de peso: ${filled} preenchido(s), ${failed.length} falha(s), ` +
+        `${skipped} já tinha(m) peso (preservado).`,
+    );
+    return { total: docs.length, filled, failed: failed.length, skipped };
   }
 
   async countsByStatus(ownerId: string) {

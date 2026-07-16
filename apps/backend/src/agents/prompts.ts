@@ -25,13 +25,44 @@ Responda em JSON válido no formato exato:
       "supplier": string|null,
       "labelPrice": number|null,
       "shortDescription": string|null,
-      "features": string[]
+      "features": string[],
+      "weight": number,
+      "weightSource": "etiqueta"|"estimado"
     }
   ],
   "confidence": number,        // 0..1, sua confiança geral na leitura
   "multipleProducts": boolean  // true se houver mais de um produto distinto na foto
 }
-Use null quando não conseguir determinar. Não invente EAN/barcode.`;
+Use null quando não conseguir determinar. Não invente EAN/barcode.
+
+PESO — única exceção à regra acima; nunca devolva null:
+"weight" é o peso de envio em QUILOS, já COM a embalagem.
+• Se estiver escrito na etiqueta/embalagem, leia e use "weightSource": "etiqueta".
+• Se não estiver visível, ESTIME a partir do material, das dimensões e da
+  quantidade (ex.: 6 copos de vidro de 320ml ≈ 2.1 kg com a caixa), e use
+  "weightSource": "estimado".
+• Na dúvida entre dois valores, escolha o MAIOR: peso declarado a menos faz a
+  transportadora repesar e cobrar a diferença do vendedor em cada venda.`;
+
+export const WEIGHT_PROMPT = `Você estima peso de envio para e-commerce brasileiro.
+A partir dos atributos do produto, devolva o peso de POSTAGEM em QUILOS, já com
+a embalagem de envio.
+
+Responda em JSON válido, no formato exato:
+{
+  "weight": number,        // kg, com embalagem. Ex.: 2.1
+  "reasoning": string,     // 1 frase: em que você se baseou
+  "confidence": number     // 0..1
+}
+
+Regras:
+• Use material, dimensões/tamanho, categoria e quantidade como base. Multiplique
+  pela quantidade quando o anúncio for um kit/jogo (ex.: "6 unidades").
+• Some a embalagem (caixa/plástico-bolha): normalmente 5% a 15% do produto.
+• Na dúvida entre dois valores, escolha o MAIOR. Peso declarado a menos faz a
+  transportadora repesar e cobrar a diferença do vendedor em toda venda.
+• Nunca devolva 0, negativo ou null. Se os dados forem escassos, use o peso
+  típico da categoria e reduza "confidence".`;
 
 export const CONTENT_PROMPT = `Você é especialista em anúncios de marketplace brasileiro (Shopee/Mercado Livre): copywriter de e-commerce + SEO. Sua meta dupla: (1) o anúncio APARECER nas buscas e (2) CONVERTER em venda — sem inventar nada.
 

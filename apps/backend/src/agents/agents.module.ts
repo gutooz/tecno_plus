@@ -8,6 +8,7 @@ import { SampleMarketSource } from './market/sample-market.source';
 import { ContentAgent } from './content.agent';
 import { ImageAgent } from './image.agent';
 import { PricingAgent } from './pricing.agent';
+import { WeightAgent } from './weight.agent';
 import { PublisherAgent } from './publisher.agent';
 import { WebsitePublisher } from './publishers/website.publisher';
 import {
@@ -31,6 +32,7 @@ import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
     ContentAgent,
     ImageAgent,
     PricingAgent,
+    WeightAgent,
     PublisherAgent,
     PipelineOrchestrator,
     // Alias por token string p/ o QueueService resolver a orquestração sem
@@ -58,6 +60,7 @@ import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
     ContentAgent,
     ImageAgent,
     PricingAgent,
+    WeightAgent,
     PublisherAgent,
     PipelineOrchestrator,
     PIPELINE_ORCHESTRATOR,
