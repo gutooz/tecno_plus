@@ -13,9 +13,12 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
+import { SocialModule } from './modules/social/social.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { PublishModule } from './modules/publish/publish.module';
 import { OpsModule } from './modules/ops/ops.module';
 import { HealthModule } from './modules/health/health.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 
 /**
  * Módulo raiz. Ordem de importação: infra global (config, db, storage, ai,
@@ -52,9 +55,12 @@ import { HealthModule } from './modules/health/health.module';
     ProductsModule,
     UploadsModule,
     TelegramModule,
+    CampaignsModule,
+    SocialModule,
     PublishModule,
     OpsModule,
     HealthModule,
+    IntegrationsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

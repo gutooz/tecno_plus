@@ -152,12 +152,20 @@ export class ProductsController {
   }
 
   @Post(':id/publish')
-  publishProduct(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.publish.publish(user.id, id);
+  publishProduct(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('channel') channel?: MarketplaceChannel,
+  ) {
+    return this.publish.publish(user.id, id, channel);
   }
 
   @Post(':id/republish')
-  republish(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.publish.publish(user.id, id);
+  republish(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('channel') channel?: MarketplaceChannel,
+  ) {
+    return this.publish.publish(user.id, id, channel);
   }
 }

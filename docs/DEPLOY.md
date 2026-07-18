@@ -1,5 +1,11 @@
 # Deploy 24h grátis — tudo no Render
 
+> **Vai submeter para revisão da Shopee Open Platform (Third-party Partner)?**
+> O free tier do Render dorme sem tráfego e o "keep-alive" (seção 6) é best-effort
+> — se o avaliador acessar durante uma janela sem ping, o cold start (~30s) pode
+> ser lido como sistema instável. Para a janela de avaliação, prefira um plano
+> pago "always on" (Render Starter ou similar) — é reversível depois.
+
 Este guia coloca o projeto no ar de graça e disponível de qualquer lugar,
 usando só o Render (backend e frontend como dois Web Services separados):
 
@@ -62,11 +68,18 @@ imagem — ok só para teste rápido).
    CORS_ORIGIN=<URL do frontend na Vercel, ex.: https://seu-app.vercel.app>
    JWT_SECRET=<gere um novo, forte>
    JWT_REFRESH_SECRET=<gere outro>
+   SHOPEE_PARTNER_ID=<do app criado em open.shopeemobile.com>
+   SHOPEE_PARTNER_KEY=<idem>
+   SHOPEE_API_HOST=https://partner.shopeemobile.com
+   SHOPEE_REDIRECT_URL=https://<nome-do-backend>.onrender.com/api/integrations/shopee/callback
    ```
    Não defina `PORT` — o Render injeta automaticamente e o backend já lê essa
    variável (`configuration.ts`).
 5. Deploy. Ao subir, teste `https://<seu-servico>.onrender.com/api/health`
    — deve responder `{"status":"ok", ...}`.
+6. No painel do app em **open.shopeemobile.com**, cadastre a mesma
+   `SHOPEE_REDIRECT_URL` como Redirect URL autorizada — a Shopee recusa o
+   callback se não bater caractere a caractere (https, sem barra final a mais).
 
 ## 5. Frontend no Render
 
@@ -112,3 +125,7 @@ bot começa a responder normalmente — sem passo extra.
 - [ ] Frontend deployado no Render (Docker, free tier) com `NEXT_PUBLIC_API_URL`
 - [ ] `CORS_ORIGIN` do backend apontando para a URL do frontend no Render
 - [ ] Cron de keep-alive pingando os dois serviços a cada 10 min
+- [ ] `SHOPEE_PARTNER_ID/KEY` + `SHOPEE_REDIRECT_URL` (https) configurados e
+      cadastrados idênticos no app da Shopee Open Platform
+- [ ] Testado: `/integrations` → conectar loja Shopee → "Testar conexão" retorna
+      o nome real da loja

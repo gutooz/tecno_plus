@@ -16,9 +16,12 @@ import {
   MercadoLivrePublisher,
   ShopeePublisher,
 } from './publishers/marketplace.publishers';
+import { FacebookPublisher, InstagramPublisher } from './publishers/social.publishers';
 import { Product, ProductDocument } from '../modules/database/schemas/product.schema';
 import { PipelineOrchestrator } from '../modules/queues/pipeline.orchestrator';
 import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
+import { ShopeeApiClient } from '../modules/integrations/shopee-api.client';
+import { ShopeeConnectionsService } from '../modules/integrations/shopee-connections.service';
 
 /**
  * Reúne os 6 agentes + as coleções de adapters (fontes de mercado, publishers).
@@ -39,16 +42,28 @@ import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
     // importar a classe (evita ciclo de import).
     { provide: PIPELINE_ORCHESTRATOR, useExisting: PipelineOrchestrator },
     WebsitePublisher,
+    FacebookPublisher,
+    InstagramPublisher,
+    ShopeeApiClient,
+    ShopeeConnectionsService,
+    ShopeePublisher,
     {
       provide: MARKET_SOURCES,
       useFactory: () => [new SampleMarketSource()],
     },
     {
       provide: MARKETPLACE_PUBLISHERS,
-      inject: [WebsitePublisher],
-      useFactory: (website: WebsitePublisher) => [
+      inject: [WebsitePublisher, FacebookPublisher, InstagramPublisher, ShopeePublisher],
+      useFactory: (
+        website: WebsitePublisher,
+        facebook: FacebookPublisher,
+        instagram: InstagramPublisher,
+        shopee: ShopeePublisher,
+      ) => [
         website,
-        new ShopeePublisher(),
+        facebook,
+        instagram,
+        shopee,
         new MercadoLivrePublisher(),
         new AmazonPublisher(),
       ],
@@ -66,6 +81,8 @@ import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
     PIPELINE_ORCHESTRATOR,
     MARKET_SOURCES,
     MARKETPLACE_PUBLISHERS,
+    ShopeeApiClient,
+    ShopeeConnectionsService,
   ],
 })
 export class AgentsModule {

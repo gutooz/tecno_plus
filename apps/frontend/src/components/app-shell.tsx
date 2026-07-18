@@ -10,6 +10,7 @@ import {
   UploadCloud,
   Layers,
   Package,
+  Plug,
   Settings,
   Moon,
   Sun,
@@ -31,6 +32,7 @@ const NAV: NavItem[] = [
   { href: '/upload', label: 'Upload', icon: UploadCloud },
   { href: '/lote', label: 'Envio em Lote', icon: Layers },
   { href: '/products', label: 'Produtos', icon: Package },
+  { href: '/integrations', label: 'Integrações', icon: Plug },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];
 

@@ -7,15 +7,15 @@ flowchart TB
   subgraph Client
     FE[Next.js 15 App Router]
   end
-  subgraph Edge
-    API[NestJS API - main.ts]
+  subgraph "Processo backend (main.ts)"
+    API[NestJS API]
+    BG{{Pipeline em segundo plano - setImmediate}}
   end
-  subgraph Background
-    W[Worker - worker.ts]
+  subgraph "Processo bot (telegram.ts)"
+    BOT[TelegramService - long-polling]
   end
   subgraph Infra
     DB[(MongoDB)]
-    RQ[(Redis / BullMQ)]
     ST[(Supabase Storage)]
   end
   subgraph External
@@ -25,20 +25,22 @@ flowchart TB
   end
 
   FE -->|JWT REST| API
+  BOT -->|ingest de foto| API
   API --> DB
   API --> ST
-  API -->|enqueue| RQ
-  RQ -->|consume| W
-  W --> DB
-  W --> ST
-  W --> AI
-  W --> MS
-  W --> MP
+  API -->|agenda| BG
+  BG --> DB
+  BG --> ST
+  BG --> AI
+  BG --> MS
+  BG --> MP
 ```
 
-**Princípio central:** a API é fina — autentica, valida, persiste e enfileira.
-Todo trabalho caro (visão, geração de conteúdo, tratamento de imagem) vive no
-**worker**, consumindo filas. Assim a interface nunca bloqueia.
+**Princípio central:** a API é fina na resposta HTTP — autentica, valida,
+persiste e agenda. Todo trabalho caro (visão, geração de conteúdo, tratamento
+de imagem) roda **em segundo plano no mesmo processo** (sem Redis nem worker
+dedicado — ver [docs/ESTRUTURA_TECNICA.md](ESTRUTURA_TECNICA.md#5-arquitetura-de-execução)
+para o motivo da mudança), então a interface nunca bloqueia esperando a IA.
 
 ## Pipeline dos agentes (sequência)
 
@@ -46,22 +48,20 @@ Todo trabalho caro (visão, geração de conteúdo, tratamento de imagem) vive n
 sequenceDiagram
   participant FE as Frontend
   participant API as API
-  participant Q as BullMQ
-  participant W as Worker
+  participant BG as Pipeline (setImmediate)
   participant DB as MongoDB
   participant AI as AIProvider
 
   FE->>API: POST /upload (imagens)
   API->>DB: cria Product (status=uploaded)
-  API->>Q: enqueue VISION
+  API->>BG: agenda etapa VISION
   API-->>FE: 200 (ids) — sem esperar IA
-  Q->>W: VISION job
-  W->>AI: analyzeImage()
-  AI-->>W: atributos + confiança
-  W->>DB: salva vision
-  W->>Q: enqueue MARKET
-  Note over W,Q: MARKET → CONTENT → IMAGE → PRICING → PUBLISH
-  W->>DB: status=published
+  BG->>AI: analyzeImage()
+  AI-->>BG: atributos + confiança
+  BG->>DB: salva vision
+  BG->>BG: agenda próxima etapa
+  Note over BG: MARKET → CONTENT → IMAGE → PRICING → PUBLISH
+  BG->>DB: status=published
   FE->>API: GET /products (polling/React Query)
 ```
 
@@ -80,18 +80,22 @@ classDiagram
   AIProvider <|.. ClaudeProvider
   AIProvider <|.. GeminiProvider
   class AiService {
-    -provider: AIProvider
+    -visionProvider: AIProvider
+    -textProvider: AIProvider
     +generateText()
     +analyzeImage()
   }
-  AiService --> AIProvider : injeta AI_PROVIDER
+  AiService --> AIProvider : injeta AI_VISION_PROVIDER
+  AiService --> AIProvider : injeta AI_TEXT_PROVIDER
   VisionAgent --> AiService
   ContentAgent --> AiService
 ```
 
-O token `AI_PROVIDER` é resolvido em bootstrap (`ai.module.ts`) conforme
-`AI_PROVIDER` do ambiente. Os agentes dependem de `AiService` / `AIProvider` —
-**nunca** de um SDK. Trocar de modelo não toca em nenhum agente.
+O roteamento é **por capacidade**, não por um único provider global:
+`AI_VISION_PROVIDER` (padrão Gemini) resolve imagens, `AI_TEXT_PROVIDER`
+(padrão Claude) resolve texto — ambos configurados em `ai.module.ts` a partir
+do `.env`. Os agentes dependem de `AiService` / `AIProvider` — **nunca** de um
+SDK. Trocar de modelo não toca em nenhum agente.
 
 ## Publicação multi-canal (Strategy)
 
@@ -159,13 +163,18 @@ em logs.
    ficam num pacote sem dependências, importado por back e front. Uma única
    fonte de verdade para tipos e cálculos, testável isoladamente.
 
-2. **Filas por agente + encadeamento** — cada etapa é uma fila BullMQ própria.
-   Isola falhas (um erro de imagem não derruba a visão), permite concorrência
-   independente por etapa e dá retry/backoff/dead-letter de graça.
+2. **Etapas encadeadas em segundo plano** — cada etapa do pipeline agenda a
+   próxima (`QueueService.enqueue`) dentro do mesmo processo, via
+   `setImmediate`, com o MongoDB guardando o estado (`status` do produto).
+   Isola falhas por etapa (`withLog` marca `ERROR` sem derrubar o processo),
+   mas **não há mais retry automático nem durabilidade de fila** — trade-off
+   assumido depois que o desenho anterior (fila BullMQ sobre Redis) estourava
+   a cota gratuita do provedor de Redis em produção. Se o processo reiniciar
+   no meio, o operador reprocessa via `POST /products/:id/process`.
 
-3. **API × Worker separados, mesmo AppModule** — reaproveita DI/config sem
-   duplicar código. Em produção, escala horizontalmente o worker sem tocar na
-   API.
+3. **Bot do Telegram × API, mesmo AppModule** — dois entrypoints (`main.ts`,
+   `telegram.ts`) reaproveitando a mesma configuração/DI sem duplicar código;
+   sobem juntos no mesmo container em produção.
 
 4. **Adapters para tudo que é externo** (IA, fontes de mercado, publishers,
    storage) — a substituição por APIs oficiais no futuro é local e não altera a

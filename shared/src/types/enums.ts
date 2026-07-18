@@ -35,6 +35,8 @@ export const MarketplaceChannel = {
   MERCADO_LIVRE: 'mercado_livre',
   AMAZON: 'amazon',
   GOOGLE_SHOPPING: 'google_shopping',
+  FACEBOOK: 'facebook',
+  INSTAGRAM: 'instagram',
 } as const;
 export type MarketplaceChannel = (typeof MarketplaceChannel)[keyof typeof MarketplaceChannel];
 

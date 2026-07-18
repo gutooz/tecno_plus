@@ -53,6 +53,27 @@ export default () => ({
     bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'product-images',
   },
 
+  facebook: {
+    appId: process.env.FACEBOOK_APP_ID ?? '',
+    appSecret: process.env.FACEBOOK_APP_SECRET ?? '',
+    pageId: process.env.FACEBOOK_PAGE_ID ?? '',
+    pageAccessToken: process.env.FACEBOOK_PAGE_ACCESS_TOKEN ?? '',
+    instagramBusinessAccountId: process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID ?? '',
+    apiVersion: process.env.FACEBOOK_API_VERSION ?? 'v19.0',
+    // Campanhas pagas (Marketing API) — inerte até estes dois estarem configurados.
+    // `ads_management` normalmente exige um token com escopo mais amplo que o de
+    // postagem orgânica; cai pro page token se nenhum for informado à parte.
+    adAccountId: process.env.FACEBOOK_AD_ACCOUNT_ID ?? '',
+    marketingApiToken:
+      process.env.FACEBOOK_MARKETING_API_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '',
+  },
+
+  // Postagem automática diária (Facebook/Instagram) com aprovação via Telegram.
+  social: {
+    // Hora local (0-23) em que o rascunho diário é mandado pra aprovação.
+    postHour: parseInt(process.env.SOCIAL_POST_HOUR ?? '9', 10),
+  },
+
   pricing: {
     tier1: parseFloat(process.env.PRICING_MARKUP_TIER1 ?? '1.20'),
     tier2: parseFloat(process.env.PRICING_MARKUP_TIER2 ?? '0.90'),
@@ -68,5 +89,16 @@ export default () => ({
       .filter(Boolean),
     rateLimitTtl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
     rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
+  },
+
+  // ── Shopee Open Platform (integração real via API, não a exportação em massa) ──
+  shopee: {
+    partnerId: process.env.SHOPEE_PARTNER_ID ?? '',
+    partnerKey: process.env.SHOPEE_PARTNER_KEY ?? '',
+    // Produção: https://partner.shopeemobile.com · Sandbox: https://partner.test-stable.shopeemobile.com
+    host: process.env.SHOPEE_API_HOST ?? 'https://partner.shopeemobile.com',
+    // URL pública do backend + "/api/integrations/shopee/callback" (deve ser https
+    // e estar cadastrada exatamente igual no app da Shopee Open Platform).
+    redirectUrl: process.env.SHOPEE_REDIRECT_URL ?? '',
   },
 });

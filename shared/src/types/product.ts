@@ -37,6 +37,13 @@ export interface ProductVisionAttributes {
    * os produtos a reconferir se o frete cobrado vier errado.
    */
   weightSource?: 'etiqueta' | 'estimado';
+  /**
+   * ID numérico da árvore de categorias da Shopee (ex.: 120039), digitado
+   * pelo operador. A IA só extrai um caminho de texto ("Beleza > Maquiagem");
+   * tanto a planilha de importação em massa quanto o Add/Update Item da API
+   * (aqui obrigatório) precisam do ID — nunca inventado.
+   */
+  shopeeCategoryId?: number;
 }
 
 /** Resultado de pesquisa de mercado (Agente 2). */
@@ -99,6 +106,20 @@ export interface ProductImageSet {
 }
 
 /**
+ * Rascunho de post social (Facebook/Instagram) aguardando aprovação do dono
+ * via Telegram. Um produto tem no máximo um `socialApproval` ativo por vez —
+ * se rejeitado, o próximo ciclo do agendador pode tentar outro produto.
+ */
+export interface SocialApproval {
+  status: 'pending' | 'approved' | 'rejected' | 'posted';
+  caption: string;
+  telegramChatId: string;
+  telegramMessageId: number;
+  scheduledAt: string; // ISO — quando foi mandado pra aprovação
+  postedAt?: string; // ISO — quando publicou de fato
+}
+
+/**
  * Agregado de produto — o documento central do catálogo.
  * `id` é o identificador do domínio; no Mongo mapeamos para `_id`.
  */
@@ -116,6 +137,9 @@ export interface Product {
   /** Quando a visão detecta vários produtos numa foto. */
   multipleProductsDetected?: boolean;
   publishedChannels: MarketplaceChannel[];
+  /** ID do anúncio em cada canal externo (ex.: `{ shopee: "2201..." }`) — necessário para update/unlist. */
+  externalIds?: Partial<Record<MarketplaceChannel, string>>;
+  socialApproval?: SocialApproval;
   createdAt: string;
   updatedAt: string;
 }

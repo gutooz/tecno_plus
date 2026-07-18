@@ -131,6 +131,15 @@ const STATUS_STYLES: Record<string, { pill: string; dot: string }> = {
   hidden: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
   draft: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
   error: { pill: 'bg-danger/12 text-danger', dot: 'bg-danger' },
+  // ── Status de posts sociais (SocialApproval) e campanhas ──
+  pending: { pill: 'bg-warning/15 text-warning', dot: 'bg-warning animate-pulse' },
+  approved: { pill: 'bg-primary/12 text-primary', dot: 'bg-primary' },
+  rejected: { pill: 'bg-danger/12 text-danger', dot: 'bg-danger' },
+  posted: { pill: 'bg-success/14 text-success', dot: 'bg-success' },
+  active: { pill: 'bg-success/14 text-success', dot: 'bg-success' },
+  paused: { pill: 'bg-warning/15 text-warning', dot: 'bg-warning' },
+  completed: { pill: 'bg-primary/12 text-primary', dot: 'bg-primary' },
+  archived: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -142,6 +151,14 @@ const STATUS_LABEL: Record<string, string> = {
   hidden: 'Oculto',
   draft: 'Rascunho',
   error: 'Erro',
+  pending: 'Pendente',
+  approved: 'Aprovado',
+  rejected: 'Rejeitado',
+  posted: 'Publicado',
+  active: 'Ativa',
+  paused: 'Pausada',
+  completed: 'Concluída',
+  archived: 'Arquivada',
 };
 
 export function StatusPill({ status }: { status: string }) {

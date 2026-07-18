@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UploadsService } from '../uploads/uploads.service';
-import { TelegramApi, TgMessage, TgUpdate } from './telegram-api';
+import { SocialApprovalService } from '../social/social.service';
+import { TelegramApi, TgCallbackQuery, TgMessage, TgUpdate } from './telegram-api';
 
 interface PendingPhoto {
   fileId: string;
@@ -32,6 +33,8 @@ export class TelegramService {
   /** Fotos de um mesmo álbum (media_group_id) chegam em mensagens separadas —
    * agrupa só pra mandar UMA confirmação, em vez de spamar uma por foto. */
   private readonly albumReplies = new Map<string, AlbumReplyBuffer>();
+  /** chatId aguardando o PRÓXIMO texto como nova legenda do post social (fluxo "Editar"). */
+  private readonly editingCaption = new Map<number, string>();
   private offset = 0;
   private running = false;
   private static readonly ALBUM_DEBOUNCE_MS = 1200;
@@ -39,6 +42,7 @@ export class TelegramService {
   constructor(
     private readonly config: ConfigService,
     private readonly uploads: UploadsService,
+    private readonly social: SocialApprovalService,
   ) {
     const token = this.config.get<string>('telegram.botToken') ?? '';
     this.api = token ? new TelegramApi(token) : null;
@@ -78,8 +82,15 @@ export class TelegramService {
   }
 
   private async handle(update: TgUpdate): Promise<void> {
+    if (!this.api) return;
+
+    if (update.callback_query) {
+      await this.handleCallback(update.callback_query);
+      return;
+    }
+
     const msg = update.message;
-    if (!msg || !this.api) return;
+    if (!msg) return;
 
     const chatId = msg.chat.id;
     if (!this.allowed.has(String(chatId))) {
@@ -95,8 +106,57 @@ export class TelegramService {
     }
 
     const text = (msg.text ?? '').trim();
+
+    const editingProductId = this.editingCaption.get(chatId);
+    if (editingProductId && text) {
+      this.editingCaption.delete(chatId);
+      await this.social.setCaption(editingProductId, text);
+      await this.api.sendMessage(
+        chatId,
+        '✅ Legenda atualizada — confira o post acima e aprove ou rejeite.',
+      );
+      return;
+    }
+
     if (text.startsWith('/start') || text.startsWith('/help') || text.startsWith('/ajuda')) {
       await this.sendHelp(chatId);
+    }
+  }
+
+  /** Roteia os botões Aprovar/Editar/Rejeitar do rascunho de divulgação social. */
+  private async handleCallback(query: TgCallbackQuery): Promise<void> {
+    if (!this.api) return;
+    const chatId = query.message?.chat.id;
+    const data = query.data ?? '';
+    if (chatId === undefined || !this.allowed.has(String(chatId))) {
+      await this.api.answerCallbackQuery(query.id, '⛔ Não autorizado.');
+      return;
+    }
+
+    const [action, productId] = data.split(':');
+    if (!productId || !['social_approve', 'social_edit', 'social_reject'].includes(action)) {
+      await this.api.answerCallbackQuery(query.id);
+      return;
+    }
+
+    try {
+      if (action === 'social_approve') {
+        await this.api.answerCallbackQuery(query.id, 'Publicando…');
+        await this.social.approve(productId);
+      } else if (action === 'social_reject') {
+        await this.api.answerCallbackQuery(query.id, 'Rejeitado.');
+        await this.social.reject(productId);
+      } else {
+        this.editingCaption.set(chatId, productId);
+        await this.api.answerCallbackQuery(query.id);
+        await this.api.sendMessage(
+          chatId,
+          '✏️ Envie o novo texto do post (será a próxima mensagem).',
+        );
+      }
+    } catch (e) {
+      this.logger.error(`callback social (${action}): ${String(e)}`);
+      await this.api.sendMessage(chatId, `❌ Erro: ${String(e)}`);
     }
   }
 

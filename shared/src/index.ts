@@ -1,6 +1,7 @@
 // ── Tipos de domínio ─────────────────────────────────────────
 export * from './types/enums';
 export * from './types/product';
+export * from './types/campaign';
 
 // ── Contratos / interfaces ───────────────────────────────────
 export * from './interfaces/ai-provider';

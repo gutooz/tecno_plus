@@ -23,9 +23,21 @@ export interface TgMessage {
   media_group_id?: string;
 }
 
+export interface TgCallbackQuery {
+  id: string;
+  data?: string;
+  from: { id: number; first_name?: string; username?: string };
+  message?: TgMessage;
+}
+
 export interface TgUpdate {
   update_id: number;
   message?: TgMessage;
+  callback_query?: TgCallbackQuery;
+}
+
+export interface TgInlineKeyboard {
+  inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
 }
 
 export class TelegramApi {
@@ -72,6 +84,62 @@ export class TelegramApi {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+  }
+
+  /** Manda foto (por URL) com legenda e, opcionalmente, botões inline. Devolve o message_id. */
+  async sendPhoto(
+    chatId: number | string,
+    photoUrl: string,
+    caption: string,
+    replyMarkup?: TgInlineKeyboard,
+  ): Promise<number> {
+    const res = await fetch(`${this.base}/sendPhoto`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: photoUrl,
+        caption,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup,
+      }),
+    });
+    const json = (await res.json()) as {
+      ok: boolean;
+      result?: { message_id: number };
+      description?: string;
+    };
+    if (!json.ok || !json.result) throw new Error(`sendPhoto: ${json.description ?? 'erro'}`);
+    return json.result.message_id;
+  }
+
+  /** Troca a legenda (e os botões) de uma mensagem de foto já enviada. */
+  async editMessageCaption(
+    chatId: number | string,
+    messageId: number,
+    caption: string,
+    replyMarkup?: TgInlineKeyboard,
+  ): Promise<void> {
+    await fetch(`${this.base}/editMessageCaption`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        caption,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup,
+      }),
+    });
+  }
+
+  /** Fecha o "carregando" do botão pressionado; `text` vira um toast rápido no app. */
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    await fetch(`${this.base}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
     });
   }
 }

@@ -49,6 +49,14 @@ export class Product {
   @Prop({ type: [String], default: [] })
   publishedChannels!: string[];
 
+  /** IDs do anúncio em cada canal externo (ex.: `{ shopee: "2201..." }`) — necessário para update/unlist. */
+  @Prop({ type: Object, default: {} })
+  externalIds!: Record<string, string>;
+
+  /** Rascunho de post social pendente/decidido — ver `SocialApproval` em @tecnoplus/shared. */
+  @Prop({ type: Object, default: null })
+  socialApproval!: Record<string, unknown> | null;
+
   // ── Deduplicação ────────────────────────────────────────────
   /** Título normalizado (slug) — evita cadastrar o mesmo produto 2x. */
   @Prop({ default: '', index: true })

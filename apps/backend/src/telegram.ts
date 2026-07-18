@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { TelegramService } from './modules/telegram/telegram.service';
+import { SocialScheduler } from './modules/social/social.scheduler';
 
 /**
  * Processo do BOT do Telegram. Reaproveita o AppModule (sem servidor HTTP),
@@ -16,13 +17,16 @@ async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule, { bufferLogs: false });
   const logger = new Logger('TelegramBot');
   const bot = app.get(TelegramService);
+  const scheduler = app.get(SocialScheduler);
 
   await bot.start();
-  logger.log('Bot do Telegram iniciado. Aguardando fotos…');
+  scheduler.start();
+  logger.log('Bot do Telegram iniciado. Aguardando fotos… (divulgação social diária ativa)');
 
   const shutdown = async () => {
     logger.log('Encerrando bot…');
     bot.stop();
+    scheduler.stop();
     await app.close();
     process.exit(0);
   };
