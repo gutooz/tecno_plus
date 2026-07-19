@@ -2,6 +2,7 @@
 export * from './types/enums';
 export * from './types/product';
 export * from './types/campaign';
+export * from './types/marketing';
 
 // ── Contratos / interfaces ───────────────────────────────────
 export * from './interfaces/ai-provider';

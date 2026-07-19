@@ -1,0 +1,148 @@
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  MarketingCampaignType,
+  MarketingChannel,
+  MarketingContentType,
+  MarketingTheme,
+} from '@tecnoplus/shared';
+import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
+import type { AuthUser } from '../auth/jwt.strategy';
+import { MarketingService } from './marketing.service';
+
+@ApiTags('marketing')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('marketing')
+export class MarketingController {
+  constructor(private readonly marketing: MarketingService) {}
+
+  @Get('dashboard')
+  dashboard(@CurrentUser() user: AuthUser) {
+    return this.marketing.dashboard(user.id);
+  }
+
+  @Get('insights')
+  insights(@CurrentUser() user: AuthUser) {
+    return this.marketing.listInsights(user.id);
+  }
+
+  @Get('trends')
+  trends(@CurrentUser() user: AuthUser) {
+    return this.marketing.listTrends(user.id);
+  }
+
+  @Post('trends/analyze')
+  analyzeTrends(@CurrentUser() user: AuthUser, @Body() body: { force?: boolean }) {
+    return this.marketing.analyzeTrends(user.id, { force: body?.force });
+  }
+
+  @Get('image-styles')
+  imageStyles() {
+    return this.marketing.listImageStyles();
+  }
+
+  @Post('copy/preview')
+  previewCopy(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { productId: string; channel: MarketingChannel; type: MarketingContentType },
+  ) {
+    return this.marketing.previewCopy(user.id, body.productId, body.channel, body.type);
+  }
+
+  @Post('image/preview')
+  previewImage(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { productId: string; styleKey: string },
+  ) {
+    return this.marketing.previewImage(user.id, body.productId, body.styleKey);
+  }
+
+  @Post('video/preview')
+  previewVideo(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { productId: string; format?: 'vertical' | 'square' },
+  ) {
+    return this.marketing.previewVideo(user.id, body.productId, body.format ?? 'vertical');
+  }
+
+  @Post('calendar/generate')
+  generateCalendar(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { days?: number; startDate?: string },
+  ) {
+    return this.marketing.generateCalendar(user.id, {
+      days: body?.days ?? 7,
+      startDate: body?.startDate,
+    });
+  }
+
+  @Get('calendar')
+  calendar(@CurrentUser() user: AuthUser, @Query('from') from: string, @Query('to') to: string) {
+    return this.marketing.listCalendar(user.id, from, to);
+  }
+
+  @Get('calendar/:id')
+  getPost(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.marketing.getPost(user.id, id);
+  }
+
+  @Patch('calendar/:id/cancel')
+  cancelPost(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.marketing.cancelPost(user.id, id);
+  }
+
+  @Patch('calendar/:id/content')
+  updatePostContent(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { caption?: string; hashtags?: string[]; cta?: string; mediaUrls?: string[] },
+  ) {
+    return this.marketing.updatePostContent(user.id, id, body);
+  }
+
+  @Post('calendar/:id/duplicate')
+  duplicatePost(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { scheduledFor: string },
+  ) {
+    return this.marketing.duplicatePost(user.id, id, body.scheduledFor);
+  }
+
+  @Post('calendar/:id/publish')
+  publishPost(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.marketing.publishPost(user.id, id);
+  }
+
+  @Post('posts')
+  createManualPost(
+    @CurrentUser() user: AuthUser,
+    @Body()
+    body: {
+      productId: string;
+      channel: MarketingChannel;
+      type: MarketingContentType;
+      theme: MarketingTheme;
+      campaignType: MarketingCampaignType;
+      scheduledFor: string;
+    },
+  ) {
+    return this.marketing.createManualPost(user.id, body);
+  }
+
+  @Post('analytics/sync')
+  syncAnalytics(@CurrentUser() user: AuthUser) {
+    return this.marketing.syncAnalytics(user.id);
+  }
+
+  @Get('analytics')
+  analyticsSummary(@CurrentUser() user: AuthUser) {
+    return this.marketing.analyticsSummary(user.id);
+  }
+
+  @Post('learning/run')
+  runLearning(@CurrentUser() user: AuthUser) {
+    return this.marketing.runLearning(user.id);
+  }
+}

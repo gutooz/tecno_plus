@@ -140,6 +140,10 @@ const STATUS_STYLES: Record<string, { pill: string; dot: string }> = {
   paused: { pill: 'bg-warning/15 text-warning', dot: 'bg-warning' },
   completed: { pill: 'bg-primary/12 text-primary', dot: 'bg-primary' },
   archived: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
+  // ── Status de posts do Marketing IA (MarketingPost) ──
+  scheduled: { pill: 'bg-primary/12 text-primary', dot: 'bg-primary' },
+  canceled: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
+  failed: { pill: 'bg-danger/12 text-danger', dot: 'bg-danger' },
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -159,6 +163,9 @@ const STATUS_LABEL: Record<string, string> = {
   paused: 'Pausada',
   completed: 'Concluída',
   archived: 'Arquivada',
+  scheduled: 'Agendado',
+  canceled: 'Cancelado',
+  failed: 'Falhou',
 };
 
 export function StatusPill({ status }: { status: string }) {

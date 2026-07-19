@@ -6,6 +6,9 @@ import { AgentLog, AgentLogSchema } from './schemas/agent-log.schema';
 import { ShopeeConnection, ShopeeConnectionSchema } from './schemas/shopee-connection.schema';
 import { ShopeeOauthState, ShopeeOauthStateSchema } from './schemas/shopee-oauth-state.schema';
 import { Campaign, CampaignSchema } from './schemas/campaign.schema';
+import { MarketingPost, MarketingPostSchema } from './schemas/marketing-post.schema';
+import { MarketingInsight, MarketingInsightSchema } from './schemas/marketing-insight.schema';
+import { MarketingAnalytics, MarketingAnalyticsSchema } from './schemas/marketing-analytics.schema';
 
 const models = MongooseModule.forFeature([
   { name: Product.name, schema: ProductSchema },
@@ -14,6 +17,9 @@ const models = MongooseModule.forFeature([
   { name: ShopeeConnection.name, schema: ShopeeConnectionSchema },
   { name: ShopeeOauthState.name, schema: ShopeeOauthStateSchema },
   { name: Campaign.name, schema: CampaignSchema },
+  { name: MarketingPost.name, schema: MarketingPostSchema },
+  { name: MarketingInsight.name, schema: MarketingInsightSchema },
+  { name: MarketingAnalytics.name, schema: MarketingAnalyticsSchema },
 ]);
 
 /**

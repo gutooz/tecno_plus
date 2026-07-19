@@ -6,6 +6,7 @@ import { ClaudeProvider } from './providers/claude.provider';
 import { GeminiProvider } from './providers/gemini.provider';
 import { AiService } from './ai.service';
 import { AI_TEXT_PROVIDER, AI_VISION_PROVIDER } from './ai.tokens';
+import { GeminiImageClient } from './gemini-image.client';
 
 /** Constrói o provider concreto a partir do nome (openai|claude|gemini). */
 function buildProvider(name: string, config: ConfigService): AIProvider {
@@ -50,7 +51,8 @@ function buildProvider(name: string, config: ConfigService): AIProvider {
       useFactory: (c: ConfigService) => buildProvider(c.get<string>('ai.provider')!, c),
     },
     AiService,
+    GeminiImageClient,
   ],
-  exports: [AI_VISION_PROVIDER, AI_TEXT_PROVIDER, AI_PROVIDER, AiService],
+  exports: [AI_VISION_PROVIDER, AI_TEXT_PROVIDER, AI_PROVIDER, AiService, GeminiImageClient],
 })
 export class AiModule {}

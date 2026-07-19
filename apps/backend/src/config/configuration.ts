@@ -72,6 +72,11 @@ export default () => ({
   social: {
     // Hora local (0-23) em que o rascunho diário é mandado pra aprovação.
     postHour: parseInt(process.env.SOCIAL_POST_HOUR ?? '9', 10),
+    // Publicação automática dos posts do calendário do Marketing IA — nasce
+    // DESATIVADA (mesma cautela do gasto real em `PaidCampaignsService`:
+    // publicar de verdade na Página/perfil não deve acontecer sozinho antes
+    // do operador optar por isso explicitamente).
+    marketingAutoPublish: process.env.MARKETING_AUTO_PUBLISH === 'true',
   },
 
   pricing: {

@@ -57,6 +57,10 @@ export class Product {
   @Prop({ type: Object, default: null })
   socialApproval!: Record<string, unknown> | null;
 
+  /** Análise do Marketing IA (score de tendência + plano de campanha) — ver `@tecnoplus/shared`. */
+  @Prop({ type: Object, default: null })
+  marketing!: Record<string, unknown> | null;
+
   // ── Deduplicação ────────────────────────────────────────────
   /** Título normalizado (slug) — evita cadastrar o mesmo produto 2x. */
   @Prop({ default: '', index: true })

@@ -1,4 +1,5 @@
 import type { CompetitionLevel, MarketplaceChannel, ProductStatus } from './enums';
+import type { MarketingCampaignPlan, TrendScore } from './marketing';
 
 /**
  * Atributos extraídos pela visão computacional (Agente 1).
@@ -140,6 +141,11 @@ export interface Product {
   /** ID do anúncio em cada canal externo (ex.: `{ shopee: "2201..." }`) — necessário para update/unlist. */
   externalIds?: Partial<Record<MarketplaceChannel, string>>;
   socialApproval?: SocialApproval;
+  /** Análise do Marketing IA (Trend Hunter + Marketing Planner) — ver `@tecnoplus/shared/types/marketing`. */
+  marketing?: {
+    trend?: TrendScore;
+    plan?: MarketingCampaignPlan;
+  };
   createdAt: string;
   updatedAt: string;
 }

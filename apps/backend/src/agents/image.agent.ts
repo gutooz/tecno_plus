@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import sharp from 'sharp';
 import { ProductImageSet } from '@tecnoplus/shared';
 import { StorageService } from '../modules/storage/storage.service';
+import { GeminiImageClient } from '../modules/ai/gemini-image.client';
 import { fetchImageAsBase64 } from '../modules/ai/ai.utils';
 import { IMAGE_KEEP, IMAGE_PROMPTS } from './prompts';
 
@@ -23,7 +23,7 @@ export class ImageAgent {
 
   constructor(
     private readonly storage: StorageService,
-    private readonly config: ConfigService,
+    private readonly gemini: GeminiImageClient,
   ) {}
 
   async run(productId: string, originalUrl: string): Promise<ProductImageSet> {
@@ -36,7 +36,7 @@ export class ImageAgent {
     const shopee: string[] = [];
     let cleanMain: Buffer | null = null;
     for (const scene of IMAGE_PROMPTS) {
-      const generated = await this.geminiScene(input, mediaType, scene.prompt);
+      const generated = await this.gemini.generateScene(input, mediaType, scene.prompt);
       if (!generated && scene === IMAGE_PROMPTS[0]) {
         this.logger.warn(
           `Recorte via Gemini indisponível p/ ${productId} — usando fallback branco.`,
@@ -97,7 +97,7 @@ export class ImageAgent {
     const key = IMAGE_PROMPTS[sceneIndex]?.key ?? `shopee-${sceneIndex + 1}`;
 
     const prompt = `${customPrompt.trim()} ${IMAGE_KEEP}`;
-    const generated = await this.geminiScene(input, mediaType, prompt);
+    const generated = await this.gemini.generateScene(input, mediaType, prompt);
     if (!generated) {
       throw new Error('Não foi possível gerar a imagem agora — tente novamente.');
     }
@@ -123,56 +123,6 @@ export class ImageAgent {
       ),
     ]);
     return { url, hd, square, webp, thumbnail };
-  }
-
-  /**
-   * Chama o modelo de imagem do Gemini para recortar o fundo e recompor o
-   * produto. Retorna o JPEG/PNG gerado (Buffer) ou null se indisponível/falhar
-   * (chave ausente, modelo sem acesso, erro de rede) — o chamador então usa o
-   * fallback determinístico. Feito via REST p/ não depender da versão do SDK.
-   */
-  private async geminiScene(
-    input: Buffer,
-    mimeType: string,
-    prompt: string,
-  ): Promise<Buffer | null> {
-    const apiKey = this.config.get<string>('ai.geminiKey') ?? '';
-    const model = this.config.get<string>('ai.imageModel') ?? 'gemini-2.5-flash-image';
-    if (!apiKey) return null;
-
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const body = {
-        contents: [
-          {
-            parts: [{ inlineData: { mimeType, data: input.toString('base64') } }, { text: prompt }],
-          },
-        ],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-      };
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        this.logger.warn(`Gemini image ${res.status}: ${(await res.text()).slice(0, 300)}`);
-        return null;
-      }
-      const json = (await res.json()) as {
-        candidates?: { content?: { parts?: Record<string, unknown>[] } }[];
-      };
-      const parts = json.candidates?.[0]?.content?.parts ?? [];
-      for (const part of parts) {
-        const inline = (part.inlineData ?? part.inline_data) as { data?: string } | undefined;
-        if (inline?.data) return Buffer.from(inline.data, 'base64');
-      }
-      this.logger.warn('Gemini image: resposta sem imagem.');
-      return null;
-    } catch (e) {
-      this.logger.warn(`Gemini image falhou: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
-    }
   }
 
   /** Normaliza qualquer imagem para o padrão Shopee: JPEG 1:1 1600×1600. */
