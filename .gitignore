@@ -20,6 +20,7 @@ out/
 logs/
 *.log
 npm-debug.log*
+.codex-local/
 
 # OS / editor
 .DS_Store

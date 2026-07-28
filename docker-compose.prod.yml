@@ -1,0 +1,68 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: tecno-plus-caddy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: tecno-plus-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3333
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/tecnoplus}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      SHOPEE_REDIRECT_URL: ${SHOPEE_REDIRECT_URL}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    expose:
+      - "3333"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_APP_URL}
+    container_name: tecno-plus-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${PUBLIC_APP_URL}
+    expose:
+      - "3000"
+
+  mongo:
+    image: mongo:7
+    container_name: tecno-plus-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  caddy-data:
+  caddy-config:
+  mongo-data:

@@ -11,13 +11,10 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
-import { MarketplaceChannel } from '@tecnoplus/shared';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
-import { PublisherAgent } from '../../agents/publisher.agent';
 import { ShopeeApiClient } from './shopee-api.client';
 import { ShopeeConnectionsService } from './shopee-connections.service';
-import { PaidCampaignsService } from '../campaigns/paid-campaigns.service';
 
 /**
  * Tela/API de "Integrações": status de cada canal de publicação + fluxo OAuth
@@ -32,9 +29,7 @@ export class IntegrationsController {
   constructor(
     private readonly shopeeClient: ShopeeApiClient,
     private readonly connections: ShopeeConnectionsService,
-    private readonly publisher: PublisherAgent,
     private readonly config: ConfigService,
-    private readonly paidCampaigns: PaidCampaignsService,
   ) {}
 
   @Get()
@@ -42,17 +37,7 @@ export class IntegrationsController {
   @UseGuards(JwtAuthGuard)
   async list(@CurrentUser() user: AuthUser) {
     const shopee = await this.connections.findByOwner(user.id);
-    const channels = this.publisher.availableChannels();
     return {
-      channels: channels.map((c) => ({
-        channel: c.channel,
-        connected: c.channel === MarketplaceChannel.SHOPEE ? Boolean(shopee) : c.enabled,
-        implemented:
-          c.channel !== MarketplaceChannel.MERCADO_LIVRE && c.channel !== MarketplaceChannel.AMAZON,
-        ...(c.channel === MarketplaceChannel.FACEBOOK || c.channel === MarketplaceChannel.INSTAGRAM
-          ? { paidAdsConfigured: this.paidCampaigns.configured }
-          : {}),
-      })),
       shopee: shopee
         ? {
             connected: true,

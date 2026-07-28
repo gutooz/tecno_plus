@@ -5,6 +5,7 @@ import { AppModule } from './app.module';
 import { TelegramService } from './modules/telegram/telegram.service';
 import { SocialScheduler } from './modules/social/social.scheduler';
 import { MarketingPublishScheduler } from './modules/marketing/marketing-publish.scheduler';
+import { MarketingAutoScheduler } from './modules/marketing/marketing-auto.scheduler';
 
 /**
  * Processo do BOT do Telegram. Reaproveita o AppModule (sem servidor HTTP),
@@ -20,10 +21,12 @@ async function bootstrap() {
   const bot = app.get(TelegramService);
   const scheduler = app.get(SocialScheduler);
   const marketingScheduler = app.get(MarketingPublishScheduler);
+  const marketingAutoScheduler = app.get(MarketingAutoScheduler);
 
   await bot.start();
   scheduler.start();
   marketingScheduler.start();
+  marketingAutoScheduler.start();
   logger.log('Bot do Telegram iniciado. Aguardando fotos… (divulgação social diária ativa)');
 
   const shutdown = async () => {
@@ -31,6 +34,7 @@ async function bootstrap() {
     bot.stop();
     scheduler.stop();
     marketingScheduler.stop();
+    marketingAutoScheduler.stop();
     await app.close();
     process.exit(0);
   };

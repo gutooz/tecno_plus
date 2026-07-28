@@ -131,7 +131,6 @@ const STATUS_STYLES: Record<string, { pill: string; dot: string }> = {
   hidden: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
   draft: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
   error: { pill: 'bg-danger/12 text-danger', dot: 'bg-danger' },
-  // ── Status de posts sociais (SocialApproval) e campanhas ──
   pending: { pill: 'bg-warning/15 text-warning', dot: 'bg-warning animate-pulse' },
   approved: { pill: 'bg-primary/12 text-primary', dot: 'bg-primary' },
   rejected: { pill: 'bg-danger/12 text-danger', dot: 'bg-danger' },
@@ -140,7 +139,6 @@ const STATUS_STYLES: Record<string, { pill: string; dot: string }> = {
   paused: { pill: 'bg-warning/15 text-warning', dot: 'bg-warning' },
   completed: { pill: 'bg-primary/12 text-primary', dot: 'bg-primary' },
   archived: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
-  // ── Status de posts do Marketing IA (MarketingPost) ──
   scheduled: { pill: 'bg-primary/12 text-primary', dot: 'bg-primary' },
   canceled: { pill: 'bg-muted/12 text-muted', dot: 'bg-muted' },
   failed: { pill: 'bg-danger/12 text-danger', dot: 'bg-danger' },

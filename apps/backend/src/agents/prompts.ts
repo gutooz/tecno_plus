@@ -69,7 +69,7 @@ Regras:
 • Todos os quatro números são obrigatórios: nunca devolva 0, negativo ou null. Se
   os dados forem escassos, use o típico da categoria e reduza "confidence".`;
 
-export const CONTENT_PROMPT = `Você é especialista em anúncios de marketplace brasileiro (Shopee/Mercado Livre): copywriter de e-commerce + SEO. Sua meta dupla: (1) o anúncio APARECER nas buscas e (2) CONVERTER em venda — sem inventar nada.
+export const CONTENT_PROMPT = `Você é especialista em anúncios para Shopee Brasil: copywriter de e-commerce + SEO. Sua meta dupla: (1) o anúncio APARECER nas buscas e (2) CONVERTER em venda — sem inventar nada.
 
 Com base nos dados do produto (visão + pesquisa de mercado), responda em JSON válido no formato EXATO:
 {

@@ -23,8 +23,8 @@ export interface CalendarSlot {
   trendScore: number;
 }
 
-/** 4 posts/dia — dentro da faixa de 3-4 pedida. */
-const DAILY_HOURS = [9, 13, 17, 20];
+/** 3 posts/dia, espalhados pelo dia (manhã/tarde/noite). */
+const DAILY_HOURS = [10, 15, 20];
 const TYPE_CYCLE: MarketingContentType[] = [
   MarketingContentType.FEED,
   MarketingContentType.STORY,

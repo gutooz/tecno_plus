@@ -1,0 +1,14 @@
+node_modules
+.git
+.next
+dist
+build
+coverage
+logs
+*.log
+.env
+.env.*
+!.env.example
+.codex-local
+tmp
+*.tmp

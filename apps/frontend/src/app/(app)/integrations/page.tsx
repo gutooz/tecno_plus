@@ -1,65 +1,20 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
-  ExternalLink,
-  Globe,
-  Link2,
-  Link2Off,
-  Package,
-  ShoppingBag,
-  Store,
-  Unplug,
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { AlertCircle, CheckCircle2, ExternalLink, Link2, ShoppingBag, Unplug } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Card, Button } from '@/components/ui';
+import { Button, Card } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
 
 interface IntegrationsData {
-  channels: {
-    channel: string;
-    connected: boolean;
-    implemented: boolean;
-    paidAdsConfigured?: boolean;
-  }[];
   shopee:
     | { connected: true; shopId: string; shopName: string; expiresAt: string }
     | { connected: false; configured: boolean };
 }
-
-const CHANNEL_META: Record<string, { label: string; icon: typeof Store; desc: string }> = {
-  website: {
-    label: 'Loja online',
-    icon: Globe,
-    desc: 'Vitrine própria — publicar aqui só marca o produto como visível no catálogo.',
-  },
-  shopee: {
-    label: 'Shopee',
-    icon: ShoppingBag,
-    desc: 'Integração real via Shopee Open Platform API: OAuth, catálogo de produtos e pedidos.',
-  },
-  mercado_livre: { label: 'Mercado Livre', icon: Store, desc: 'Publisher em desenvolvimento.' },
-  amazon: { label: 'Amazon', icon: Package, desc: 'Publisher em desenvolvimento.' },
-  facebook: {
-    label: 'Facebook',
-    icon: Store,
-    desc: 'Postagem automática com aprovação via Telegram.',
-  },
-  instagram: {
-    label: 'Instagram',
-    icon: Store,
-    desc: 'Postagem automática com aprovação via Telegram.',
-  },
-};
 
 export default function IntegrationsPage() {
   return (
@@ -94,8 +49,7 @@ function IntegrationsContent() {
       });
       router.replace('/integrations');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [queryClient, router, searchParams]);
 
   const connect = useMutation({
     mutationFn: () => api.get<{ url: string }>('/integrations/shopee/connect'),
@@ -120,7 +74,7 @@ function IntegrationsContent() {
     onSuccess: (res) =>
       setBanner({
         type: 'success',
-        text: `Conexão funcionando — loja "${res.shop?.shop_name ?? '—'}" respondeu à API.`,
+        text: `Conexao funcionando. Loja "${res.shop?.shop_name ?? 'Shopee'}" respondeu a API.`,
       }),
     onError: (err) =>
       setBanner({ type: 'error', text: err instanceof Error ? err.message : String(err) }),
@@ -138,10 +92,7 @@ function IntegrationsContent() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader
-        title="Integrações"
-        subtitle="Conexões reais com marketplaces, ERPs e hubs logísticos"
-      />
+      <PageHeader title="Shopee" subtitle="Conexao da loja, pedidos e publicacao em lote" />
 
       <AnimatePresence initial={false}>
         {banner && (
@@ -164,7 +115,6 @@ function IntegrationsContent() {
         )}
       </AnimatePresence>
 
-      {/* Shopee — única integração via API real hoje */}
       <Card className="mb-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3.5">
@@ -173,18 +123,18 @@ function IntegrationsContent() {
             </span>
             <div>
               <p className="font-semibold">Shopee</p>
-              <p className="mt-0.5 max-w-md text-sm text-muted">{CHANNEL_META.shopee.desc}</p>
+              <p className="mt-0.5 max-w-md text-sm text-muted">
+                Integracao via Shopee Open Platform API para loja, catalogo e pedidos.
+              </p>
               {isLoading ? (
-                <p className="mt-2 text-xs text-muted">Carregando status…</p>
+                <p className="mt-2 text-xs text-muted">Carregando status...</p>
               ) : shopeeConnected ? (
                 <p className="mt-2 text-xs text-success">
-                  Conectada · loja &quot;{shopee.shopName || shopee.shopId}&quot; (ID{' '}
-                  {shopee.shopId})
+                  Conectada: {shopee.shopName || shopee.shopId} (ID {shopee.shopId})
                 </p>
               ) : shopee && !shopee.configured ? (
                 <p className="mt-2 text-xs text-warning">
-                  Servidor sem credenciais do app Shopee (SHOPEE_PARTNER_ID/KEY) — configure antes
-                  de conectar.
+                  Configure SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no servidor antes de conectar.
                 </p>
               ) : (
                 <p className="mt-2 text-xs text-muted">Nenhuma loja conectada.</p>
@@ -201,7 +151,7 @@ function IntegrationsContent() {
                   loading={test.isPending}
                   onClick={() => test.mutate()}
                 >
-                  <Link2 size={15} /> Testar conexão
+                  <Link2 size={15} /> Testar conexao
                 </Button>
                 <Button
                   size="sm"
@@ -236,17 +186,20 @@ function IntegrationsContent() {
         {orders && (
           <div className="mt-4 border-t border-border/70 pt-4">
             <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-faint">
-              Pedidos recentes (15 dias)
+              Pedidos recentes
             </p>
             {orders.length === 0 ? (
               <p className="text-sm text-muted">
-                Nenhum pedido no período — a chamada à API funcionou.
+                Nenhum pedido recente. A chamada a API funcionou.
               </p>
             ) : (
               <ul className="space-y-1.5 text-sm">
-                {orders.map((o, i) => (
-                  <li key={i} className="rounded-lg bg-surface-2/60 px-3 py-1.5 font-mono text-xs">
-                    {JSON.stringify(o)}
+                {orders.map((order, index) => (
+                  <li
+                    key={index}
+                    className="rounded-lg bg-surface-2/60 px-3 py-1.5 font-mono text-xs"
+                  >
+                    {JSON.stringify(order)}
                   </li>
                 ))}
               </ul>
@@ -255,65 +208,10 @@ function IntegrationsContent() {
         )}
       </Card>
 
-      {/* Demais canais */}
-      <div className="grid gap-3.5 sm:grid-cols-2">
-        {(data?.channels ?? [])
-          .filter((c) => c.channel !== 'shopee')
-          .map((c) => {
-            const meta = CHANNEL_META[c.channel] ?? { label: c.channel, icon: Store, desc: '' };
-            const Icon = meta.icon;
-            const manageable = c.channel === 'facebook' || c.channel === 'instagram';
-            const cardContent = (
-              <Card key={c.channel} interactive={manageable} className="flex items-start gap-3.5">
-                <span
-                  className={cn(
-                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
-                    c.connected ? 'bg-success/12 text-success' : 'bg-muted/12 text-muted',
-                  )}
-                >
-                  <Icon size={18} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{meta.label}</p>
-                  <p className="mt-0.5 text-xs text-muted">{meta.desc}</p>
-                  <p
-                    className={cn(
-                      'mt-1.5 inline-flex items-center gap-1 text-xs font-medium',
-                      c.connected ? 'text-success' : 'text-muted',
-                    )}
-                  >
-                    {c.connected ? (
-                      <>
-                        <CheckCircle2 size={12} /> Ativo
-                      </>
-                    ) : c.implemented ? (
-                      <>
-                        <Link2Off size={12} /> Não configurado
-                      </>
-                    ) : (
-                      <>
-                        <Clock3 size={12} /> Em desenvolvimento
-                      </>
-                    )}
-                  </p>
-                </div>
-                {manageable && <ChevronRight size={18} className="mt-1 shrink-0 text-faint" />}
-              </Card>
-            );
-            return manageable ? (
-              <Link key={c.channel} href={`/integrations/${c.channel}`}>
-                {cardContent}
-              </Link>
-            ) : (
-              cardContent
-            );
-          })}
-      </div>
-
       <p className="mt-5 flex items-center gap-1.5 text-xs text-muted">
         <ExternalLink size={13} />
-        Swagger da API (produto/pedido/OAuth Shopee) disponível em{' '}
-        <code className="rounded bg-surface-2 px-1 py-0.5">/api/docs</code>.
+        API Shopee disponivel em <code className="rounded bg-surface-2 px-1 py-0.5">/api/docs</code>
+        .
       </p>
     </div>
   );

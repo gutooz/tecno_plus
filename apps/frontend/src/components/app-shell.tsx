@@ -15,7 +15,6 @@ import {
   Moon,
   Sun,
   LogOut,
-  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -33,7 +32,6 @@ const NAV: NavItem[] = [
   { href: '/upload', label: 'Upload', icon: UploadCloud },
   { href: '/lote', label: 'Envio em Lote', icon: Layers },
   { href: '/products', label: 'Produtos', icon: Package },
-  { href: '/marketing', label: 'Marketing IA', icon: Sparkles },
   { href: '/integrations', label: 'Integrações', icon: Plug },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];

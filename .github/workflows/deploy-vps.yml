@@ -1,0 +1,103 @@
+name: Deploy VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+      PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Build
+        run: npm run build
+
+      - name: Check deploy secrets
+        shell: bash
+        run: |
+          test -n "$VPS_HOST" || (echo "Missing secret VPS_HOST" && exit 1)
+          test -n "$VPS_USER" || (echo "Missing secret VPS_USER" && exit 1)
+          test -n "${{ secrets.VPS_SSH_KEY }}" || (echo "Missing secret VPS_SSH_KEY" && exit 1)
+          test -n "$PROD_ENV_FILE" || (echo "Missing secret PROD_ENV_FILE" && exit 1)
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          PORT="${VPS_PORT:-22}"
+          ssh-keyscan -p "$PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Prepare env file
+        shell: bash
+        run: |
+          printf '%s\n' "$PROD_ENV_FILE" > .deploy-env
+
+      - name: Sync files to VPS
+        shell: bash
+        run: |
+          PORT="${VPS_PORT:-22}"
+          APP_DIR="${VPS_APP_DIR:-/opt/tecno-plus}"
+          ssh -p "$PORT" "$VPS_USER@$VPS_HOST" "mkdir -p '$APP_DIR'"
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude 'dist' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            --exclude '.deploy-env' \
+            --exclude '.codex-local' \
+            -e "ssh -p $PORT" \
+            ./ "$VPS_USER@$VPS_HOST:$APP_DIR/"
+          scp -P "$PORT" .deploy-env "$VPS_USER@$VPS_HOST:$APP_DIR/.env"
+
+      - name: Docker compose up
+        shell: bash
+        run: |
+          PORT="${VPS_PORT:-22}"
+          APP_DIR="${VPS_APP_DIR:-/opt/tecno-plus}"
+          ssh -p "$PORT" "$VPS_USER@$VPS_HOST" "
+            set -e
+            cd '$APP_DIR'
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            docker image prune -f
+          "
+
+      - name: Health check
+        shell: bash
+        run: |
+          APP_URL="$(printf '%s\n' "$PROD_ENV_FILE" | awk -F= '/^PUBLIC_APP_URL=/{print $2}' | tail -n1)"
+          if [ -z "$APP_URL" ]; then
+            DOMAIN="$(printf '%s\n' "$PROD_ENV_FILE" | awk -F= '/^APP_DOMAIN=/{print $2}' | tail -n1)"
+            APP_URL="https://$DOMAIN"
+          fi
+          curl --fail --retry 10 --retry-delay 6 "$APP_URL/api/health"

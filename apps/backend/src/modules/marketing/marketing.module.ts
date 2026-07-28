@@ -11,6 +11,7 @@ import { MarketingPublishScheduler } from './marketing-publish.scheduler';
 import { MarketingVideoAgent } from '../../agents/marketing/marketing-video.agent';
 import { MarketingAnalyticsAgent } from '../../agents/marketing/marketing-analytics.agent';
 import { MarketingLearningAgent } from '../../agents/marketing/marketing-learning.agent';
+import { MarketingAutoScheduler } from './marketing-auto.scheduler';
 
 /**
  * Departamento de Marketing IA — models (`MarketingPost`/`MarketingInsight`/
@@ -42,7 +43,8 @@ import { MarketingLearningAgent } from '../../agents/marketing/marketing-learnin
     MarketingVideoAgent,
     MarketingAnalyticsAgent,
     MarketingLearningAgent,
+    MarketingAutoScheduler,
   ],
-  exports: [MarketingService, MarketingPublishScheduler],
+  exports: [MarketingService, MarketingPublishScheduler, MarketingAutoScheduler],
 })
 export class MarketingModule {}

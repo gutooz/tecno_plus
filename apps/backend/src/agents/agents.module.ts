@@ -11,12 +11,7 @@ import { PricingAgent } from './pricing.agent';
 import { WeightAgent } from './weight.agent';
 import { PublisherAgent } from './publisher.agent';
 import { WebsitePublisher } from './publishers/website.publisher';
-import {
-  AmazonPublisher,
-  MercadoLivrePublisher,
-  ShopeePublisher,
-} from './publishers/marketplace.publishers';
-import { FacebookPublisher, InstagramPublisher } from './publishers/social.publishers';
+import { ShopeePublisher } from './publishers/marketplace.publishers';
 import { Product, ProductDocument } from '../modules/database/schemas/product.schema';
 import { PipelineOrchestrator } from '../modules/queues/pipeline.orchestrator';
 import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
@@ -42,8 +37,6 @@ import { ShopeeConnectionsService } from '../modules/integrations/shopee-connect
     // importar a classe (evita ciclo de import).
     { provide: PIPELINE_ORCHESTRATOR, useExisting: PipelineOrchestrator },
     WebsitePublisher,
-    FacebookPublisher,
-    InstagramPublisher,
     ShopeeApiClient,
     ShopeeConnectionsService,
     ShopeePublisher,
@@ -53,20 +46,8 @@ import { ShopeeConnectionsService } from '../modules/integrations/shopee-connect
     },
     {
       provide: MARKETPLACE_PUBLISHERS,
-      inject: [WebsitePublisher, FacebookPublisher, InstagramPublisher, ShopeePublisher],
-      useFactory: (
-        website: WebsitePublisher,
-        facebook: FacebookPublisher,
-        instagram: InstagramPublisher,
-        shopee: ShopeePublisher,
-      ) => [
-        website,
-        facebook,
-        instagram,
-        shopee,
-        new MercadoLivrePublisher(),
-        new AmazonPublisher(),
-      ],
+      inject: [WebsitePublisher, ShopeePublisher],
+      useFactory: (website: WebsitePublisher, shopee: ShopeePublisher) => [website, shopee],
     },
   ],
   exports: [

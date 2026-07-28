@@ -77,6 +77,13 @@ export default () => ({
     // publicar de verdade na Página/perfil não deve acontecer sozinho antes
     // do operador optar por isso explicitamente).
     marketingAutoPublish: process.env.MARKETING_AUTO_PUBLISH === 'true',
+    // Geração automática de conteúdo do Marketing IA (analisar tendência dos
+    // produtos novos + gerar o próximo dia do calendário + gerar imagem de
+    // cada post) — diferente de PUBLICAR: aqui nada sai do banco de dados,
+    // então o padrão é LIGADO. Consome cota de IA (Gemini/Claude) todo dia.
+    marketingAutoGenerate: process.env.MARKETING_AUTO_GENERATE !== 'false',
+    // Hora local (0-23) em que a geração automática diária roda.
+    marketingGenerateHour: parseInt(process.env.MARKETING_GENERATE_HOUR ?? '6', 10),
   },
 
   pricing: {

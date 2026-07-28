@@ -16,32 +16,7 @@ import { ShopeeConnectionsService } from '../../modules/integrations/shopee-conn
 import { mapProductToShopeeItem } from '../../modules/integrations/shopee-item-mapper';
 import { collectImages } from '../../modules/products/shopee/shopee-mapper';
 
-/**
- * Publishers de marketplaces externos. Shopee é implementado de verdade via
- * Shopee Open Platform API (ver `modules/integrations/`) — Mercado Livre e
- * Amazon seguem como pontos de extensão (lançam `NotImplemented`) até que
- * suas respectivas APIs oficiais sejam integradas (ver ROADMAP).
- */
-
-class NotImplementedPublisher implements MarketplacePublisher {
-  readonly enabled = false;
-  constructor(readonly channel: MarketplaceChannel) {}
-
-  private fail(): never {
-    throw new Error(`Publisher "${this.channel}" ainda não implementado (extensão futura).`);
-  }
-
-  publish(_product: Product): Promise<PublishResult> {
-    return this.fail();
-  }
-  unpublish(_product: Product): Promise<PublishResult> {
-    return this.fail();
-  }
-  update(_product: Product): Promise<PublishResult> {
-    return this.fail();
-  }
-}
-
+/** Publisher real da Shopee via Shopee Open Platform API. */
 @Injectable()
 export class ShopeePublisher implements MarketplacePublisher {
   readonly channel = MarketplaceChannel.SHOPEE;
@@ -53,7 +28,6 @@ export class ShopeePublisher implements MarketplacePublisher {
     @InjectModel(ProductEntity.name) private readonly model: Model<ProductDocument>,
   ) {}
 
-  /** Sem credenciais do app Shopee configuradas no servidor, o canal fica desabilitado na UI. */
   get enabled(): boolean {
     return this.client.configured;
   }
@@ -69,7 +43,7 @@ export class ShopeePublisher implements MarketplacePublisher {
   async unpublish(product: Product): Promise<PublishResult> {
     const auth = await this.requireAuth(product.ownerId);
     const itemId = product.externalIds?.shopee;
-    if (!itemId) throw new Error('Produto nunca foi publicado na Shopee (sem item_id).');
+    if (!itemId) throw new Error('Produto nunca foi publicado na Shopee.');
 
     await this.client.request('/api/v2/product/unlist_item', auth.accessToken, auth.shopId, {
       body: { item_list: [{ item_id: Number(itemId), unlist: true }] },
@@ -84,14 +58,11 @@ export class ShopeePublisher implements MarketplacePublisher {
   private async requireAuth(ownerId: string): Promise<{ accessToken: string; shopId: string }> {
     const auth = await this.connections.getValidAccessToken(ownerId);
     if (!auth) {
-      throw new Error(
-        'Nenhuma loja Shopee conectada. Conecte em Integrações antes de publicar neste canal.',
-      );
+      throw new Error('Conecte uma loja Shopee em Integracoes antes de publicar.');
     }
     return auth;
   }
 
-  /** Sobe as imagens tratadas do produto ao Media Space e devolve os `image_id`s na ordem. */
   private async uploadImages(
     accessToken: string,
     shopId: string,
@@ -99,12 +70,11 @@ export class ShopeePublisher implements MarketplacePublisher {
   ): Promise<string[]> {
     const urls = collectImages(product.images as unknown as Record<string, unknown>);
     const ids: string[] = [];
+
     for (const [i, url] of urls.entries()) {
       const res = await fetch(url);
       if (!res.ok) {
-        this.logger.warn(
-          `Falha ao baixar imagem ${url} do produto ${product.internalSku} — pulando.`,
-        );
+        this.logger.warn(`Falha ao baixar imagem ${i + 1} do produto ${product.internalSku}.`);
         continue;
       }
       const buffer = Buffer.from(await res.arrayBuffer());
@@ -117,6 +87,7 @@ export class ShopeePublisher implements MarketplacePublisher {
         ),
       );
     }
+
     return ids;
   }
 
@@ -127,10 +98,9 @@ export class ShopeePublisher implements MarketplacePublisher {
     payload.logistic_info = (
       await this.client.getEnabledLogisticIds(auth.accessToken, auth.shopId)
     ).map((logistic_id) => ({ logistic_id, enabled: true }));
+
     if (!payload.logistic_info.length) {
-      throw new Error(
-        'A loja Shopee não tem nenhum canal logístico habilitado — habilite um no Seller Center.',
-      );
+      throw new Error('Habilite ao menos um canal logistico no Seller Center da Shopee.');
     }
 
     const existingItemId = product.externalIds?.shopee;
@@ -144,7 +114,7 @@ export class ShopeePublisher implements MarketplacePublisher {
       { body },
     );
     const itemId = json.response?.item_id ? String(json.response.item_id) : existingItemId;
-    if (!itemId) throw new Error('Shopee não retornou item_id para o produto publicado.');
+    if (!itemId) throw new Error('Shopee nao retornou item_id para o produto publicado.');
 
     await this.model.updateOne(
       { _id: product.id },
@@ -161,17 +131,5 @@ export class ShopeePublisher implements MarketplacePublisher {
       externalId: itemId,
       publishedAt: new Date().toISOString(),
     };
-  }
-}
-
-export class MercadoLivrePublisher extends NotImplementedPublisher {
-  constructor() {
-    super(MarketplaceChannel.MERCADO_LIVRE);
-  }
-}
-
-export class AmazonPublisher extends NotImplementedPublisher {
-  constructor() {
-    super(MarketplaceChannel.AMAZON);
   }
 }
