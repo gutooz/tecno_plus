@@ -6,6 +6,7 @@ build
 coverage
 logs
 *.log
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
