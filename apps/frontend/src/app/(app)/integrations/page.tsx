@@ -4,7 +4,17 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, CheckCircle2, ExternalLink, Link2, ShoppingBag, Unplug } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  FileSpreadsheet,
+  Link2,
+  PackageCheck,
+  ShoppingBag,
+  Unplug,
+  UploadCloud,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
@@ -89,10 +99,11 @@ function IntegrationsContent() {
 
   const shopee = data?.shopee;
   const shopeeConnected = shopee?.connected === true;
+  const shopeeApiConfigured = shopee?.connected === false && shopee.configured;
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title="Shopee" subtitle="Conexao da loja, pedidos e publicacao em lote" />
+      <PageHeader title="Shopee" subtitle="Catalogo, Excel em lote e API Open Platform" />
 
       <AnimatePresence initial={false}>
         {banner && (
@@ -124,7 +135,8 @@ function IntegrationsContent() {
             <div>
               <p className="font-semibold">Shopee</p>
               <p className="mt-0.5 max-w-md text-sm text-muted">
-                Integracao via Shopee Open Platform API para loja, catalogo e pedidos.
+                Integracao ativa para catalogo Shopee por Excel em lote. A API direta sera conectada
+                assim que a Shopee liberar as credenciais do app.
               </p>
               {isLoading ? (
                 <p className="mt-2 text-xs text-muted">Carregando status...</p>
@@ -132,12 +144,11 @@ function IntegrationsContent() {
                 <p className="mt-2 text-xs text-success">
                   Conectada: {shopee.shopName || shopee.shopId} (ID {shopee.shopId})
                 </p>
-              ) : shopee && !shopee.configured ? (
-                <p className="mt-2 text-xs text-warning">
-                  Configure SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no servidor antes de conectar.
-                </p>
               ) : (
-                <p className="mt-2 text-xs text-muted">Nenhuma loja conectada.</p>
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-success">
+                  <CheckCircle2 size={14} /> Ativa para avaliacao: produtos, imagens, precos e
+                  planilha Shopee em massa.
+                </p>
               )}
             </div>
           </div>
@@ -170,18 +181,48 @@ function IntegrationsContent() {
                   <Unplug size={15} /> Desconectar
                 </Button>
               </>
-            ) : (
-              <Button
-                size="sm"
-                disabled={!shopee?.configured}
-                loading={connect.isPending}
-                onClick={() => connect.mutate()}
-              >
+            ) : shopeeApiConfigured ? (
+              <Button size="sm" loading={connect.isPending} onClick={() => connect.mutate()}>
                 <Link2 size={15} /> Conectar loja Shopee
               </Button>
+            ) : (
+              <>
+                <Button size="sm" onClick={() => router.push('/products')}>
+                  <FileSpreadsheet size={15} /> Exportar Excel Shopee
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => router.push('/lote')}>
+                  <UploadCloud size={15} /> Envio em Lote
+                </Button>
+              </>
             )}
           </div>
         </div>
+
+        {!shopeeConnected && !isLoading && (
+          <div className="mt-5 border-t border-border/70 pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-faint">
+              Fluxo Shopee verificavel
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="flex gap-2.5 text-sm text-muted">
+                <PackageCheck size={17} className="mt-0.5 shrink-0 text-success" />
+                <span>Produtos cadastrados e tratados ficam disponiveis no catalogo.</span>
+              </div>
+              <div className="flex gap-2.5 text-sm text-muted">
+                <UploadCloud size={17} className="mt-0.5 shrink-0 text-success" />
+                <span>Envio em Lote recebe fotos, custo, preco de venda e estoque.</span>
+              </div>
+              <div className="flex gap-2.5 text-sm text-muted">
+                <FileSpreadsheet size={17} className="mt-0.5 shrink-0 text-success" />
+                <span>Produtos selecionados geram planilha pronta para subir na Shopee.</span>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted">
+              URL publica com TLS ativo. OAuth Open Platform fica pendente apenas ate a aprovacao do
+              perfil pela Shopee.
+            </p>
+          </div>
+        )}
 
         {orders && (
           <div className="mt-4 border-t border-border/70 pt-4">
@@ -210,8 +251,8 @@ function IntegrationsContent() {
 
       <p className="mt-5 flex items-center gap-1.5 text-xs text-muted">
         <ExternalLink size={13} />
-        API Shopee disponivel em <code className="rounded bg-surface-2 px-1 py-0.5">/api/docs</code>
-        .
+        Fluxo: Integracoes, Produtos e Envio em Lote. API tecnica em{' '}
+        <code className="rounded bg-surface-2 px-1 py-0.5">/api/docs</code>.
       </p>
     </div>
   );
