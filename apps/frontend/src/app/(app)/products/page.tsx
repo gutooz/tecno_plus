@@ -18,7 +18,7 @@ import {
 import { api } from '@/lib/api';
 import { Button, Card, Checkbox, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
-import { cn, formatBRL, formatPercent, productThumbnail } from '@/lib/utils';
+import { cn, formatBRL, formatDate, formatPercent, productThumbnail } from '@/lib/utils';
 
 interface ProductRow {
   _id: string;
@@ -30,6 +30,7 @@ interface ProductRow {
   pricing?: { purchasePrice?: number; suggestedPrice?: number; marginPercent?: number };
   images?: { thumbnail?: string };
   publishedChannels?: string[];
+  createdAt?: string;
 }
 
 interface ListResponse {
@@ -302,6 +303,9 @@ export default function ProductsPage() {
                   <span className={p.vision?.quantity ? 'text-muted' : 'font-medium text-warning'}>
                     Estoque <b className="text-fg">{p.vision?.quantity ?? '—'}</b>
                   </span>
+                  <span className="text-muted">
+                    Cadastro <b className="text-fg">{formatDate(p.createdAt)}</b>
+                  </span>
                 </div>
                 <div className="mt-2.5 flex items-center gap-1">
                   <Link href={`/products/${p._id}`} aria-label="Editar">
@@ -349,6 +353,7 @@ export default function ProductsPage() {
                 <th className="px-3 py-3 font-semibold">Estoque</th>
                 <th className="px-3 py-3 font-semibold">IA</th>
                 <th className="px-3 py-3 font-semibold">Status</th>
+                <th className="px-3 py-3 font-semibold">Cadastro</th>
                 <th className="px-3 py-3 pr-4 text-right font-semibold">Ações</th>
               </tr>
             </thead>
@@ -356,7 +361,7 @@ export default function ProductsPage() {
               {isLoading &&
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/60">
-                    <td colSpan={10} className="px-4 py-3">
+                    <td colSpan={11} className="px-4 py-3">
                       <Skeleton className="h-10 w-full rounded-xl" />
                     </td>
                   </tr>
@@ -412,6 +417,7 @@ export default function ProductsPage() {
                     <td className="px-3 py-3">
                       <StatusPill status={p.status} />
                     </td>
+                    <td className="nums px-3 py-3 text-muted">{formatDate(p.createdAt)}</td>
                     <td className="px-3 py-3 pr-4">
                       <div className="flex items-center justify-end gap-0.5">
                         <Link href={`/products/${p._id}`} aria-label="Editar">

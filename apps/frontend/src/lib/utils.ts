@@ -15,6 +15,13 @@ export function formatPercent(value?: number | null): string {
   return `${value.toFixed(0)}%`;
 }
 
+export function formatDate(value?: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('pt-BR');
+}
+
 interface ProductImages {
   thumbnail?: string;
   hd?: string;
