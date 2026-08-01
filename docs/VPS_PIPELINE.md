@@ -83,6 +83,18 @@ No painel da Shopee Open Platform, a Redirect URL precisa ser exatamente:
 https://zycron.online/api/integrations/shopee/callback
 ```
 
+## Bot do Telegram
+
+O `docker-compose.prod.yml` sobe um serviço `bot` separado (mesma imagem do
+backend, rodando `node apps/backend/dist/telegram.js`). Sem essas três
+variáveis no `PROD_ENV_FILE`, o serviço sobe mas o bot não responde:
+
+```env
+TELEGRAM_BOT_TOKEN=<token do @BotFather>
+TELEGRAM_CHAT_ID=<IDs de chat autorizados, separados por vírgula>
+TELEGRAM_OWNER_ID=<ownerId dos produtos cadastrados pelo bot>
+```
+
 ## Deploy manual
 
 Depois dos secrets configurados, va em:

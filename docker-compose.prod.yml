@@ -18,6 +18,7 @@ services:
       - caddy-config:/config
 
   backend:
+    image: tecno-plus-backend:latest
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
@@ -35,6 +36,21 @@ services:
         condition: service_healthy
     expose:
       - "3333"
+
+  bot:
+    image: tecno-plus-backend:latest
+    container_name: tecno-plus-bot
+    restart: unless-stopped
+    command: ["node", "apps/backend/dist/telegram.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/tecnoplus}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      backend:
+        condition: service_started
 
   frontend:
     build:
