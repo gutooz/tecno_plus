@@ -15,6 +15,17 @@ interface AlbumReplyBuffer {
   timer: ReturnType<typeof setTimeout>;
 }
 
+type FlowStep =
+  'awaiting_mode' | 'awaiting_photo' | 'awaiting_caption' | 'awaiting_price' | 'awaiting_weight';
+
+/** Estado do cadastro individual guiado por chat (foto → legenda → preço → peso). */
+interface FlowSession {
+  step: FlowStep;
+  photo?: PendingPhoto;
+  caption?: string;
+  price?: number;
+}
+
 /**
  * Bot de cadastro via Telegram. Fluxo: o operador manda a(s) FOTO(s) — o bot
  * só sobe a imagem (sem título/preço) e confirma. Título, preço e o disparo
@@ -35,9 +46,13 @@ export class TelegramService {
   private readonly albumReplies = new Map<string, AlbumReplyBuffer>();
   /** chatId aguardando o PRÓXIMO texto como nova legenda do post social (fluxo "Editar"). */
   private readonly editingCaption = new Map<number, string>();
+  /** chatId em cadastro individual guiado (saudação "oi" → lote/individual → foto/legenda/preço/peso). */
+  private readonly flows = new Map<number, FlowSession>();
   private offset = 0;
   private running = false;
   private static readonly ALBUM_DEBOUNCE_MS = 1200;
+  private static readonly GREETING_RE =
+    /^(oi+|ol[aá]+|opa|e a[ií]|eae|bom dia|boa tarde|boa noite)[!.?\s]*$/i;
 
   constructor(
     private readonly config: ConfigService,
@@ -100,6 +115,13 @@ export class TelegramService {
 
     const photo = this.extractPhoto(msg);
     if (photo) {
+      const flow = this.flows.get(chatId);
+      if (flow?.step === 'awaiting_photo') {
+        flow.photo = photo;
+        flow.step = 'awaiting_caption';
+        await this.api.sendMessage(chatId, '✍️ Qual a <b>legenda</b> (nome) do produto?');
+        return;
+      }
       await this.ingestPhoto(chatId, photo);
       this.bumpAlbumReply(chatId, msg.media_group_id);
       return;
@@ -118,8 +140,121 @@ export class TelegramService {
       return;
     }
 
+    if (text === '/cancelar') {
+      this.flows.delete(chatId);
+      await this.api.sendMessage(chatId, '❌ Cadastro cancelado.');
+      return;
+    }
+
+    const flow = this.flows.get(chatId);
+    if (flow && text && (await this.handleFlowText(chatId, flow, text))) {
+      return;
+    }
+
+    if (TelegramService.GREETING_RE.test(text)) {
+      this.flows.set(chatId, { step: 'awaiting_mode' });
+      await this.api.sendMessage(chatId, 'Oi! Quer enviar em <b>lote</b> ou <b>individual</b>?', {
+        inline_keyboard: [
+          [
+            { text: '🗂 Em lote', callback_data: 'flowmode:lote' },
+            { text: '🖼 Individual', callback_data: 'flowmode:individual' },
+          ],
+        ],
+      });
+      return;
+    }
+
     if (text.startsWith('/start') || text.startsWith('/help') || text.startsWith('/ajuda')) {
       await this.sendHelp(chatId);
+    }
+  }
+
+  /** Trata o texto quando o chat está no meio do fluxo guiado. Devolve `true` se consumiu a mensagem. */
+  private async handleFlowText(chatId: number, flow: FlowSession, text: string): Promise<boolean> {
+    if (!this.api) return false;
+
+    if (flow.step === 'awaiting_mode') {
+      await this.api.sendMessage(
+        chatId,
+        'Toque em um dos botões acima: <b>Em lote</b> ou <b>Individual</b>.',
+      );
+      return true;
+    }
+
+    if (flow.step === 'awaiting_caption') {
+      flow.caption = text;
+      flow.step = 'awaiting_price';
+      await this.api.sendMessage(chatId, '💰 Qual o <b>preço</b> (R$)?');
+      return true;
+    }
+
+    if (flow.step === 'awaiting_price') {
+      const price = this.parseNumber(text);
+      if (price == null) {
+        await this.api.sendMessage(chatId, '⚠️ Preço inválido. Digite só o número, ex: 49.90');
+        return true;
+      }
+      flow.price = price;
+      flow.step = 'awaiting_weight';
+      await this.api.sendMessage(chatId, '⚖️ Qual o <b>peso</b> (kg)?');
+      return true;
+    }
+
+    if (flow.step === 'awaiting_weight') {
+      const weight = this.parseNumber(text);
+      if (weight == null) {
+        await this.api.sendMessage(chatId, '⚠️ Peso inválido. Digite só o número, ex: 0.35');
+        return true;
+      }
+      this.flows.delete(chatId);
+      await this.finishIndividual(chatId, flow, weight);
+      return true;
+    }
+
+    return false;
+  }
+
+  private parseNumber(text: string): number | null {
+    const cleaned = text
+      .trim()
+      .replace(/[^\d.,]/g, '')
+      .replace(',', '.');
+    const n = Number(cleaned);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  /** Fecha o cadastro individual: baixa a foto e chama o ingest com legenda+preço+peso já prontos. */
+  private async finishIndividual(chatId: number, flow: FlowSession, weight: number): Promise<void> {
+    if (!this.api || !flow.photo || !flow.caption || flow.price == null) return;
+    try {
+      await this.api.sendMessage(chatId, '⏳ Baixando foto e cadastrando produto…');
+      const path = await this.api.getFilePath(flow.photo.fileId);
+      const buffer = await this.api.download(path);
+      const result = await this.uploads.ingestWithData({
+        ownerId: this.ownerId,
+        buffer,
+        mimeType: flow.photo.mimeType,
+        name: flow.caption,
+        purchasePrice: flow.price,
+        weight,
+        source: 'telegram',
+      });
+
+      if (result.duplicate) {
+        await this.api.sendMessage(
+          chatId,
+          `⚠️ Já existe um produto parecido: <b>${result.existing.name}</b> (${result.existing.internalSku}). Não cadastrei de novo.`,
+        );
+        return;
+      }
+
+      await this.api.sendMessage(
+        chatId,
+        `✅ Produto <b>${flow.caption}</b> cadastrado (${result.internalSku})! A IA já está tratando a foto e gerando a descrição — vai aparecer em <b>Produtos</b> em instantes.`,
+      );
+    } catch (e) {
+      this.logger.error(`cadastro individual: ${String(e)}`);
+      await this.api.sendMessage(chatId, `❌ Falha ao cadastrar: ${String(e)}`);
     }
   }
 
@@ -130,6 +265,12 @@ export class TelegramService {
     const data = query.data ?? '';
     if (chatId === undefined || !this.allowed.has(String(chatId))) {
       await this.api.answerCallbackQuery(query.id, '⛔ Não autorizado.');
+      return;
+    }
+
+    if (data === 'flowmode:lote' || data === 'flowmode:individual') {
+      await this.api.answerCallbackQuery(query.id);
+      await this.handleModeChoice(chatId, data === 'flowmode:individual');
       return;
     }
 
@@ -158,6 +299,21 @@ export class TelegramService {
       this.logger.error(`callback social (${action}): ${String(e)}`);
       await this.api.sendMessage(chatId, `❌ Erro: ${String(e)}`);
     }
+  }
+
+  /** Resposta aos botões "Em lote" / "Individual" da saudação. */
+  private async handleModeChoice(chatId: number, individual: boolean): Promise<void> {
+    if (!this.api) return;
+    if (!individual) {
+      this.flows.delete(chatId);
+      await this.api.sendMessage(
+        chatId,
+        '🗂 Modo <b>lote</b>. Envie a(s) foto(s) do(s) produto(s) — pode mandar várias de uma vez. Depois vá no site, em <b>Envio em Lote</b>, pra colocar título, preço e peso de cada uma.',
+      );
+      return;
+    }
+    this.flows.set(chatId, { step: 'awaiting_photo' });
+    await this.api.sendMessage(chatId, '🖼 Modo <b>individual</b>. Envie a foto do produto.');
   }
 
   private extractPhoto(msg: TgMessage): PendingPhoto | null {
@@ -225,9 +381,10 @@ export class TelegramService {
       [
         '🤖 <b>Tecno Plus — cadastro por foto</b>',
         '',
-        '1) Envie a(s) <b>foto(s)</b> do(s) produto(s) — pode mandar várias de uma vez.',
-        '2) Vá no site, na tela <b>Envio em Lote</b>, e coloque título e preço de cada uma.',
-        '3) Ao salvar lá, a IA trata a imagem e gera a descrição automaticamente.',
+        'Mande um <b>oi</b> pra escolher o modo de cadastro:',
+        '',
+        '🗂 <b>Em lote</b> — envie a(s) foto(s) (pode ser várias de uma vez) e depois vá no site, em <b>Envio em Lote</b>, colocar título, preço e peso de cada uma.',
+        '🖼 <b>Individual</b> — o bot pergunta a foto, a legenda, o preço e o peso, e já cadastra o produto. A IA trata a foto e gera a descrição automaticamente.',
       ].join('\n'),
     );
   }

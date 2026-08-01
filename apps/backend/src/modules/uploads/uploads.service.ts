@@ -19,6 +19,8 @@ export interface IngestWithData {
   mimeType: string;
   name: string;
   purchasePrice: number;
+  /** Peso em kg já informado pelo operador (fluxo Telegram individual) — vira `vision.weight`. */
+  weight?: number;
   source?: string;
 }
 
@@ -113,7 +115,11 @@ export class UploadsService {
       ownerId: data.ownerId,
       internalSku: buildInternalSku(undefined, `${Date.now()}${Math.round(Math.random() * 1e6)}`),
       status: ProductStatus.PROCESSING,
-      vision: { name, labelPrice: data.purchasePrice },
+      vision: {
+        name,
+        labelPrice: data.purchasePrice,
+        ...(data.weight != null ? { weight: data.weight, weightSource: 'etiqueta' } : {}),
+      },
       pricing: { purchasePrice: data.purchasePrice },
       images: {},
       nameKey,

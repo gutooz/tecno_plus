@@ -79,11 +79,20 @@ export class TelegramApi {
     return Buffer.from(await res.arrayBuffer());
   }
 
-  async sendMessage(chatId: number | string, text: string): Promise<void> {
+  async sendMessage(
+    chatId: number | string,
+    text: string,
+    replyMarkup?: TgInlineKeyboard,
+  ): Promise<void> {
     await fetch(`${this.base}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup,
+      }),
     });
   }
 
