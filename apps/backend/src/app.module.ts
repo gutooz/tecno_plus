@@ -17,6 +17,8 @@ import { OpsModule } from './modules/ops/ops.module';
 import { HealthModule } from './modules/health/health.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { DropshippingModule } from './modules/dropshipping/dropshipping.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
+import { MarketingModule } from './modules/marketing/marketing.module';
 
 /**
  * Módulo raiz. Ordem de importação: infra global (config, db, storage, ai,
@@ -57,6 +59,8 @@ import { DropshippingModule } from './modules/dropshipping/dropshipping.module';
     HealthModule,
     IntegrationsModule,
     DropshippingModule,
+    TelegramModule,
+    MarketingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
