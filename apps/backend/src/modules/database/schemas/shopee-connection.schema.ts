@@ -39,7 +39,7 @@ export class ShopeeConnection {
   @Prop({ default: 'BR' })
   region!: string;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   lastSyncAt!: Date | null;
 
   @Prop({ type: [String], default: [] })

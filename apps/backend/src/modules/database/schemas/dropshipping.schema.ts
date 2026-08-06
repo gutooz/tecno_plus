@@ -417,7 +417,7 @@ export class SyncJob {
   @Prop({ default: 5 })
   maxAttempts!: number;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   nextRunAt!: Date | null;
 
   @Prop({ type: Object, default: {} })
@@ -490,10 +490,10 @@ export class FinancialEntry {
   })
   status!: string;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   expectedAt!: Date | null;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   paidAt!: Date | null;
 
   @Prop({ default: '' })
