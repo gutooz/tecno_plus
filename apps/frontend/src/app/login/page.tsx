@@ -4,11 +4,19 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, Eye, EyeOff, Lock, Mail, Sparkles, Zap } from 'lucide-react';
-import { api, getToken, setRefreshToken, setToken } from '@/lib/api';
+import { AlertCircle, Eye, EyeOff, Lock, Mail, Sparkles, Store, Truck, Zap } from 'lucide-react';
+import {
+  api,
+  getToken,
+  setRefreshToken,
+  setSessionUser,
+  setToken,
+  type SessionUser,
+} from '@/lib/api';
 import { Button, Checkbox, Input } from '@/components/ui';
 
 type Mode = 'login' | 'register';
+type ProfileType = 'supplier' | 'seller';
 
 const HIGHLIGHTS = [
   { icon: Zap, value: '10x mais rápido', label: 'Do upload à publicação' },
@@ -19,7 +27,9 @@ export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [profileType, setProfileType] = useState<ProfileType>('seller');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
@@ -41,13 +51,20 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<{ accessToken: string; refreshToken: string }>(`/auth/${mode}`, {
+      const res = await api.post<{
+        accessToken: string;
+        refreshToken: string;
+        user: SessionUser;
+      }>(`/auth/${mode}`, {
         email,
+        name,
         password,
+        profileType: mode === 'register' ? profileType : undefined,
       });
       setToken(res.accessToken, remember);
       setRefreshToken(res.refreshToken, remember);
-      router.push('/dashboard');
+      setSessionUser(res.user, remember);
+      router.push(res.user.role === 'supplier' ? '/supplier' : '/seller');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao autenticar');
     } finally {
@@ -170,6 +187,43 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+            {mode === 'register' && (
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => setProfileType('seller')}
+                  className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                    profileType === 'seller'
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-surface text-muted hover:bg-surface-2'
+                  }`}
+                >
+                  <Store size={16} />
+                  Quero criar uma loja como vendedor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProfileType('supplier')}
+                  className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                    profileType === 'supplier'
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-surface text-muted hover:bg-surface-2'
+                  }`}
+                >
+                  <Truck size={16} />
+                  Quero vender produtos como fornecedor
+                </button>
+                <Input
+                  id="name"
+                  placeholder="Nome do responsável"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                  className="h-12"
+                />
+              </div>
+            )}
+
             <Input
               id="email"
               type="email"

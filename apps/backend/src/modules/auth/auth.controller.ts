@@ -11,7 +11,7 @@ export class AuthController {
   @Post('register')
   @ApiOperation({ summary: 'Cria um usuário e retorna tokens' })
   register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto.email, dto.password, dto.name);
+    return this.auth.register(dto.email, dto.password, dto.name, dto.profileType);
   }
 
   @Post('login')

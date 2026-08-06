@@ -14,8 +14,11 @@ export class User {
   @Prop({ default: '' })
   name!: string;
 
-  @Prop({ default: 'admin', enum: ['admin', 'operator'] })
+  @Prop({ default: 'seller', enum: ['admin', 'operator', 'supplier', 'seller'] })
   role!: string;
+
+  @Prop({ default: '', index: true })
+  organizationId!: string;
 
   @Prop({ type: [String], default: [] })
   refreshTokenHashes!: string[];

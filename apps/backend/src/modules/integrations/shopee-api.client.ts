@@ -37,10 +37,35 @@ export class ShopeeApiClient {
   get redirectUrl(): string {
     return this.config.get<string>('shopee.redirectUrl') ?? '';
   }
+  get webhookUrl(): string {
+    return this.config.get<string>('shopee.webhookUrl') ?? '';
+  }
+  get environment(): string {
+    return this.config.get<string>('shopee.environment') ?? 'production';
+  }
+  get region(): string {
+    return this.config.get<string>('shopee.region') ?? 'BR';
+  }
 
   /** Sem partner_id/partner_key não há como assinar nada — a UI usa isso pra ocultar o botão de conectar. */
   get configured(): boolean {
     return Boolean(this.partnerId && this.partnerKey && this.redirectUrl);
+  }
+
+  publicConfig() {
+    return {
+      configured: this.configured,
+      environment: this.environment,
+      region: this.region,
+      host: this.host,
+      redirectUrl: this.redirectUrl,
+      webhookUrl: this.webhookUrl,
+      missing: [
+        !this.partnerId && 'SHOPEE_PARTNER_ID',
+        !this.partnerKey && 'SHOPEE_PARTNER_KEY',
+        !this.redirectUrl && 'SHOPEE_REDIRECT_URL',
+      ].filter(Boolean),
+    };
   }
 
   private sign(path: string, timestamp: number, extra = ''): string {
