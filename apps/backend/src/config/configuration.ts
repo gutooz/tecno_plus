@@ -114,8 +114,13 @@ export default () => ({
     webhookUrl: process.env.SHOPEE_WEBHOOK_URL ?? '',
     region: process.env.SHOPEE_REGION ?? 'BR',
     environment: process.env.SHOPEE_ENVIRONMENT ?? 'production',
-    // Produção: https://partner.shopeemobile.com · Sandbox: https://partner.test-stable.shopeemobile.com
+    // API: produção https://partner.shopeemobile.com · sandbox https://partner.test-stable.shopeemobile.com
     host: process.env.SHOPEE_API_HOST ?? 'https://partner.shopeemobile.com',
+    // Tela de autorização: no sandbox a Shopee usa outro domínio.
+    authHost:
+      process.env.SHOPEE_AUTH_HOST ??
+      process.env.SHOPEE_API_HOST ??
+      'https://partner.shopeemobile.com',
     // URL pública do backend + "/api/integrations/shopee/callback" (deve ser https
     // e estar cadastrada exatamente igual no app da Shopee Open Platform).
     redirectUrl: process.env.SHOPEE_REDIRECT_URL ?? '',

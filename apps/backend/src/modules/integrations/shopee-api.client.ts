@@ -34,6 +34,9 @@ export class ShopeeApiClient {
   private get host(): string {
     return this.config.get<string>('shopee.host') ?? 'https://partner.shopeemobile.com';
   }
+  private get authHost(): string {
+    return this.config.get<string>('shopee.authHost') ?? this.host;
+  }
   get redirectUrl(): string {
     return this.config.get<string>('shopee.redirectUrl') ?? '';
   }
@@ -58,6 +61,7 @@ export class ShopeeApiClient {
       environment: this.environment,
       region: this.region,
       host: this.host,
+      authHost: this.authHost,
       redirectUrl: this.redirectUrl,
       webhookUrl: this.webhookUrl,
       missing: [
@@ -84,7 +88,7 @@ export class ShopeeApiClient {
       sign,
       redirect: `${this.redirectUrl}?state=${encodeURIComponent(state)}`,
     });
-    return `${this.host}${path}?${params.toString()}`;
+    return `${this.authHost}${path}?${params.toString()}`;
   }
 
   /** Troca o `code` do redirect por access_token/refresh_token (1ª autorização). */
