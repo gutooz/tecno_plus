@@ -54,7 +54,15 @@ jobs:
           printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           PORT="${VPS_PORT:-22}"
-          ssh-keyscan -p "$PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 30 -p "$PORT" "$VPS_HOST" >> ~/.ssh/known_hosts 2>/tmp/ssh-keyscan.err || {
+            echo "ssh-keyscan could not pre-load the VPS host key; SSH will try accept-new on first connection."
+            cat /tmp/ssh-keyscan.err
+          }
+          ssh -p "$PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o StrictHostKeyChecking=accept-new \
+            "$VPS_USER@$VPS_HOST" "echo SSH connection ok"
 
       - name: Prepare env file
         shell: bash
@@ -66,7 +74,8 @@ jobs:
         run: |
           PORT="${VPS_PORT:-22}"
           APP_DIR="${VPS_APP_DIR:-/opt/tecno-plus}"
-          ssh -p "$PORT" "$VPS_USER@$VPS_HOST" "mkdir -p '$APP_DIR'"
+          SSH_CMD="ssh -p $PORT -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=accept-new"
+          $SSH_CMD "$VPS_USER@$VPS_HOST" "mkdir -p '$APP_DIR'"
           rsync -az --delete \
             --exclude '.git' \
             --exclude 'node_modules' \
@@ -77,17 +86,22 @@ jobs:
             --exclude '.env.*' \
             --exclude '.deploy-env' \
             --exclude '.codex-local' \
-            -e "ssh -p $PORT" \
+            -e "$SSH_CMD" \
             ./ "$VPS_USER@$VPS_HOST:$APP_DIR/"
-          scp -P "$PORT" .deploy-env "$VPS_USER@$VPS_HOST:$APP_DIR/.env"
-          ssh -p "$PORT" "$VPS_USER@$VPS_HOST" "find '$APP_DIR' -name '*.tsbuildinfo' -not -path '$APP_DIR/node_modules/*' -delete"
+          scp -P "$PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o StrictHostKeyChecking=accept-new \
+            .deploy-env "$VPS_USER@$VPS_HOST:$APP_DIR/.env"
+          $SSH_CMD "$VPS_USER@$VPS_HOST" "find '$APP_DIR' -name '*.tsbuildinfo' -not -path '$APP_DIR/node_modules/*' -delete"
 
       - name: Docker compose up
         shell: bash
         run: |
           PORT="${VPS_PORT:-22}"
           APP_DIR="${VPS_APP_DIR:-/opt/tecno-plus}"
-          ssh -p "$PORT" "$VPS_USER@$VPS_HOST" "
+          SSH_CMD="ssh -p $PORT -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=accept-new"
+          $SSH_CMD "$VPS_USER@$VPS_HOST" "
             set -e
             cd '$APP_DIR'
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
