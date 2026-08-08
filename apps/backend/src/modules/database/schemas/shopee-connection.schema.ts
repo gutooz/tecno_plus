@@ -16,6 +16,9 @@ export class ShopeeConnection {
   shopId!: string;
 
   @Prop({ default: '' })
+  partnerId!: string;
+
+  @Prop({ default: '' })
   shopName!: string;
 
   @Prop({ required: true })
@@ -26,6 +29,21 @@ export class ShopeeConnection {
 
   @Prop({ required: true })
   expiresAt!: Date;
+
+  @Prop({
+    default: 'connected',
+    enum: ['connected', 'expired', 'revoked', 'disconnected', 'error'],
+  })
+  status!: string;
+
+  @Prop({ default: 'BR' })
+  region!: string;
+
+  @Prop({ type: Date, default: null })
+  lastSyncAt!: Date | null;
+
+  @Prop({ type: [String], default: [] })
+  recentErrors!: string[];
 }
 
 export const ShopeeConnectionSchema = SchemaFactory.createForClass(ShopeeConnection);

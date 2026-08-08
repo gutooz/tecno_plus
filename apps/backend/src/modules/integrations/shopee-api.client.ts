@@ -34,13 +34,42 @@ export class ShopeeApiClient {
   private get host(): string {
     return this.config.get<string>('shopee.host') ?? 'https://partner.shopeemobile.com';
   }
+  private get authHost(): string {
+    return this.config.get<string>('shopee.authHost') ?? this.host;
+  }
   get redirectUrl(): string {
     return this.config.get<string>('shopee.redirectUrl') ?? '';
+  }
+  get webhookUrl(): string {
+    return this.config.get<string>('shopee.webhookUrl') ?? '';
+  }
+  get environment(): string {
+    return this.config.get<string>('shopee.environment') ?? 'production';
+  }
+  get region(): string {
+    return this.config.get<string>('shopee.region') ?? 'BR';
   }
 
   /** Sem partner_id/partner_key não há como assinar nada — a UI usa isso pra ocultar o botão de conectar. */
   get configured(): boolean {
     return Boolean(this.partnerId && this.partnerKey && this.redirectUrl);
+  }
+
+  publicConfig() {
+    return {
+      configured: this.configured,
+      environment: this.environment,
+      region: this.region,
+      host: this.host,
+      authHost: this.authHost,
+      redirectUrl: this.redirectUrl,
+      webhookUrl: this.webhookUrl,
+      missing: [
+        !this.partnerId && 'SHOPEE_PARTNER_ID',
+        !this.partnerKey && 'SHOPEE_PARTNER_KEY',
+        !this.redirectUrl && 'SHOPEE_REDIRECT_URL',
+      ].filter(Boolean),
+    };
   }
 
   private sign(path: string, timestamp: number, extra = ''): string {
@@ -59,7 +88,7 @@ export class ShopeeApiClient {
       sign,
       redirect: `${this.redirectUrl}?state=${encodeURIComponent(state)}`,
     });
-    return `${this.host}${path}?${params.toString()}`;
+    return `${this.authHost}${path}?${params.toString()}`;
   }
 
   /** Troca o `code` do redirect por access_token/refresh_token (1ª autorização). */

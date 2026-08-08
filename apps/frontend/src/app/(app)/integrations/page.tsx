@@ -12,6 +12,7 @@ import {
   Link2,
   PackageCheck,
   ShoppingBag,
+  Store,
   Unplug,
   UploadCloud,
 } from 'lucide-react';
@@ -22,8 +23,31 @@ import { cn } from '@/lib/utils';
 
 interface IntegrationsData {
   shopee:
-    | { connected: true; shopId: string; shopName: string; expiresAt: string }
+    | {
+        connected: true;
+        shopId: string;
+        shopName: string;
+        expiresAt: string;
+        status?: string;
+        region?: string;
+        lastSyncAt?: string | null;
+        recentErrors?: string[];
+        config: ShopeeConfig;
+      }
+    | ({ connected: false } & ShopeeConfig);
+  mercadoLivre:
+    | { connected: true; mlUserId: string; nickname: string; expiresAt: string }
     | { connected: false; configured: boolean };
+}
+
+interface ShopeeConfig {
+  configured: boolean;
+  environment: string;
+  region: string;
+  host: string;
+  redirectUrl: string;
+  webhookUrl: string;
+  missing: string[];
 }
 
 export default function IntegrationsPage() {
@@ -56,6 +80,19 @@ function IntegrationsContent() {
       setBanner({
         type: 'error',
         text: searchParams.get('message') || 'Falha ao conectar a loja Shopee.',
+      });
+      router.replace('/integrations');
+    }
+
+    const ml = searchParams.get('ml');
+    if (ml === 'connected') {
+      setBanner({ type: 'success', text: 'Conta Mercado Livre conectada com sucesso.' });
+      queryClient.invalidateQueries({ queryKey: ['integrations'] });
+      router.replace('/integrations');
+    } else if (ml === 'error') {
+      setBanner({
+        type: 'error',
+        text: searchParams.get('message') || 'Falha ao conectar o Mercado Livre.',
       });
       router.replace('/integrations');
     }
@@ -97,9 +134,40 @@ function IntegrationsContent() {
       setBanner({ type: 'error', text: err instanceof Error ? err.message : String(err) }),
   });
 
+  const connectMl = useMutation({
+    mutationFn: () => api.get<{ url: string }>('/integrations/mercado-livre/connect'),
+    onSuccess: (res) => {
+      window.location.href = res.url;
+    },
+    onError: (err) =>
+      setBanner({ type: 'error', text: err instanceof Error ? err.message : String(err) }),
+  });
+
+  const disconnectMl = useMutation({
+    mutationFn: () => api.post('/integrations/mercado-livre/disconnect'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['integrations'] }),
+  });
+
+  const testMl = useMutation({
+    mutationFn: () =>
+      api.get<{ ok: boolean; account: { nickname?: string } }>('/integrations/mercado-livre/test'),
+    onSuccess: (res) =>
+      setBanner({
+        type: 'success',
+        text: `Conexao funcionando. Conta "${res.account?.nickname ?? 'Mercado Livre'}" respondeu a API.`,
+      }),
+    onError: (err) =>
+      setBanner({ type: 'error', text: err instanceof Error ? err.message : String(err) }),
+  });
+
   const shopee = data?.shopee;
   const shopeeConnected = shopee?.connected === true;
-  const shopeeApiConfigured = shopee?.connected === false && shopee.configured;
+  const shopeeConfig = shopeeConnected ? shopee.config : shopee;
+  const shopeeApiConfigured = Boolean(shopeeConfig?.configured);
+
+  const mercadoLivre = data?.mercadoLivre;
+  const mlConnected = mercadoLivre?.connected === true;
+  const mlApiConfigured = mercadoLivre?.connected === false && mercadoLivre.configured;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -135,14 +203,15 @@ function IntegrationsContent() {
             <div>
               <p className="font-semibold">Shopee</p>
               <p className="mt-0.5 max-w-md text-sm text-muted">
-                Integracao ativa para catalogo Shopee por Excel em lote. A API direta sera conectada
-                assim que a Shopee liberar as credenciais do app.
+                Conecte a loja via Shopee Open Platform para consultar pedidos, renovar tokens e
+                preparar sincronização de produtos, preço e estoque.
               </p>
               {isLoading ? (
                 <p className="mt-2 text-xs text-muted">Carregando status...</p>
               ) : shopeeConnected ? (
                 <p className="mt-2 text-xs text-success">
                   Conectada: {shopee.shopName || shopee.shopId} (ID {shopee.shopId})
+                  {shopee.status ? ` · ${shopee.status}` : ''}
                 </p>
               ) : (
                 <p className="mt-2 flex items-center gap-1.5 text-xs text-success">
@@ -183,7 +252,7 @@ function IntegrationsContent() {
               </>
             ) : shopeeApiConfigured ? (
               <Button size="sm" loading={connect.isPending} onClick={() => connect.mutate()}>
-                <Link2 size={15} /> Conectar loja Shopee
+                <Link2 size={15} /> Conectar minha loja Shopee
               </Button>
             ) : (
               <>
@@ -217,9 +286,26 @@ function IntegrationsContent() {
                 <span>Produtos selecionados geram planilha pronta para subir na Shopee.</span>
               </div>
             </div>
-            <p className="mt-3 text-xs text-muted">
-              URL publica com TLS ativo. OAuth Open Platform fica pendente apenas ate a aprovacao do
-              perfil pela Shopee.
+            {shopeeConfig?.missing?.length ? (
+              <p className="mt-3 text-xs text-warning">
+                Faltam variáveis no backend: {shopeeConfig.missing.join(', ')}.
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-muted">
+                Ambiente {shopeeConfig?.environment} · Região {shopeeConfig?.region}.
+              </p>
+            )}
+          </div>
+        )}
+
+        {shopeeConfig && (
+          <div className="mt-4 rounded-2xl border border-border bg-surface-2/60 p-3 text-xs text-muted">
+            <p className="font-semibold text-fg">URLs para o app Shopee</p>
+            <p className="mt-2 break-all">
+              Callback: {shopeeConfig.redirectUrl || 'não configurada'}
+            </p>
+            <p className="mt-1 break-all">
+              Webhook: {shopeeConfig.webhookUrl || 'não configurada'}
             </p>
           </div>
         )}
@@ -247,6 +333,72 @@ function IntegrationsContent() {
             )}
           </div>
         )}
+      </Card>
+
+      <Card className="mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Store size={20} />
+            </span>
+            <div>
+              <p className="font-semibold">Mercado Livre</p>
+              <p className="mt-0.5 max-w-md text-sm text-muted">
+                Integracao via API oficial (OAuth2 + PKCE): conecta a conta do vendedor e publica
+                anuncios direto no Mercado Livre.
+              </p>
+              {isLoading ? (
+                <p className="mt-2 text-xs text-muted">Carregando status...</p>
+              ) : mlConnected ? (
+                <p className="mt-2 text-xs text-success">
+                  Conectada: {mercadoLivre.nickname || mercadoLivre.mlUserId} (ID{' '}
+                  {mercadoLivre.mlUserId})
+                </p>
+              ) : mlApiConfigured ? (
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-success">
+                  <CheckCircle2 size={14} /> Pronta para conectar.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-muted">
+                  Aguardando credenciais do app no DevCenter (MERCADO_LIVRE_CLIENT_ID/
+                  MERCADO_LIVRE_CLIENT_SECRET/MERCADO_LIVRE_REDIRECT_URI).
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {mlConnected ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  loading={testMl.isPending}
+                  onClick={() => testMl.mutate()}
+                >
+                  <Link2 size={15} /> Testar conexao
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={disconnectMl.isPending}
+                  onClick={() => disconnectMl.mutate()}
+                >
+                  <Unplug size={15} /> Desconectar
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                disabled={!mlApiConfigured}
+                loading={connectMl.isPending}
+                onClick={() => connectMl.mutate()}
+              >
+                <Link2 size={15} /> Conectar conta Mercado Livre
+              </Button>
+            )}
+          </div>
+        </div>
       </Card>
 
       <p className="mt-5 flex items-center gap-1.5 text-xs text-muted">

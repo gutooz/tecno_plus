@@ -2,8 +2,9 @@
 
 O produto entrega a **fundação arquitetural** e o **pipeline ponta-a-ponta** dos
 6 agentes, com adapters e pontos de extensão para tudo que é externo, além da
-**integração real com a Shopee via API** (OAuth, produto, pedido). Abaixo, a
-evolução priorizada.
+**integração real com a Shopee via API** (OAuth, produto, pedido) e da
+**integração real com o Mercado Livre via API** (OAuth2+PKCE, publicar/atualizar
+anúncio). Abaixo, a evolução priorizada.
 
 ## Legenda
 
@@ -11,18 +12,19 @@ evolução priorizada.
 
 ## Estado atual
 
-| Área                                                           | Estado | Observação                                                                                                                                                                                                                     |
-| -------------------------------------------------------------- | :----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Monorepo, DI, filas, worker isolado                            |   🟢   |                                                                                                                                                                                                                                |
-| Adapter de IA (OpenAI/Claude/Gemini)                           |   🟢   | troca por env                                                                                                                                                                                                                  |
-| Vision / Content / Pricing agents                              |   🟢   | IA real + regras puras                                                                                                                                                                                                         |
-| Image agent (HD/quadrada/WebP/thumb)                           |   🟢   | remoção de fundo é 🟡                                                                                                                                                                                                          |
-| Market agent                                                   |   🟡   | `SampleMarketSource` (adapter substituível por API oficial)                                                                                                                                                                    |
-| Publisher — WebsitePublisher                                   |   🟢   |                                                                                                                                                                                                                                |
-| Integração Shopee — OAuth + API (`modules/integrations/`)      |   🟢   | conectar loja, publicar/atualizar produto, ler pedidos, testar conexão — falta só configurar `SHOPEE_PARTNER_ID/KEY` reais e, por produto, o `shopeeCategoryId` (a API exige categoria; a planilha de importação em massa não) |
-| Publisher — Mercado Livre/Amazon                               |   🟡   | interfaces prontas, lançam `NotImplemented`                                                                                                                                                                                    |
-| Auth JWT + refresh                                             |   🟢   | tokens em localStorage (migrar p/ cookie httpOnly)                                                                                                                                                                             |
-| Dashboard / Produtos / Upload / Detalhe / Config / Integrações |   🟢   |                                                                                                                                                                                                                                |
+| Área                                                                   | Estado | Observação                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------- | :----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Monorepo, DI, filas, worker isolado                                    |   🟢   |                                                                                                                                                                                                                                                                                                                  |
+| Adapter de IA (OpenAI/Claude/Gemini)                                   |   🟢   | troca por env                                                                                                                                                                                                                                                                                                    |
+| Vision / Content / Pricing agents                                      |   🟢   | IA real + regras puras                                                                                                                                                                                                                                                                                           |
+| Image agent (HD/quadrada/WebP/thumb)                                   |   🟢   | remoção de fundo é 🟡                                                                                                                                                                                                                                                                                            |
+| Market agent                                                           |   🟡   | `SampleMarketSource` (adapter substituível por API oficial)                                                                                                                                                                                                                                                      |
+| Publisher — WebsitePublisher                                           |   🟢   |                                                                                                                                                                                                                                                                                                                  |
+| Integração Shopee — OAuth + API (`modules/integrations/`)              |   🟢   | conectar loja, publicar/atualizar produto, ler pedidos, testar conexão — falta só configurar `SHOPEE_PARTNER_ID/KEY` reais e, por produto, o `shopeeCategoryId` (a API exige categoria; a planilha de importação em massa não)                                                                                   |
+| Integração Mercado Livre — OAuth2+PKCE + API (`modules/integrations/`) |   🟡   | conectar conta, publicar/atualizar/pausar anúncio, testar conexão — falta configurar `MERCADO_LIVRE_CLIENT_ID/SECRET/REDIRECT_URI` reais (app homologado no DevCenter), por produto o `mercadoLivreCategoryId`/`mercadoLivreListingTypeId`, e ainda não há webhook de pedidos nem sync de estoque/preço (ver P2) |
+| Publisher — Amazon                                                     |   🟡   | interface pronta, lança `NotImplemented`                                                                                                                                                                                                                                                                         |
+| Auth JWT + refresh                                                     |   🟢   | tokens em localStorage (migrar p/ cookie httpOnly)                                                                                                                                                                                                                                                               |
+| Dashboard / Produtos / Upload / Detalhe / Config / Integrações         |   🟢   |                                                                                                                                                                                                                                                                                                                  |
 
 ## Prioridades (ordenadas)
 
@@ -49,13 +51,20 @@ evolução priorizada.
 
 ### P2 — Canais e integrações
 
-9. **Publishers reais**: Shopee ✅ (via API, `modules/integrations/`);
-   Mercado Livre e Amazon seguem como classes a preencher (mesmo padrão) +
-   agendamento de publicação.
-   9b. **Mapeamento de categoria/atributos Shopee**: hoje `shopeeCategoryId` é
-   digitado manualmente por produto (a API não aceita texto livre nem
+9. **Publishers reais**: Shopee ✅ e Mercado Livre ✅ (via API,
+   `modules/integrations/`); Amazon segue como classe a preencher (mesmo
+   padrão) + agendamento de publicação.
+   9b. **Mapeamento de categoria/atributos Shopee/Mercado Livre**: hoje
+   `shopeeCategoryId`/`mercadoLivreCategoryId`/`mercadoLivreListingTypeId` são
+   digitados manualmente por produto (as APIs não aceitam texto livre nem
    "deixar em branco" como a planilha). Evolução natural: sincronizar
-   `product.get_category`/`get_attributes` e oferecer um seletor na UI.
+   `product.get_category`/`get_attributes` (Shopee) e `GET /categories/:id`/
+   `GET /categories/:id/attributes` (Mercado Livre) e oferecer um seletor na UI.
+   9c. **Pedidos e estoque Mercado Livre**: assinar webhooks (`orders_v2`,
+   `items`), reconciliar `available_quantity` via cron e criar o equivalente ao
+   `GET /integrations/shopee/orders` — hoje só o fluxo de conectar+publicar
+   está implementado (MVP), mesmo nível que a Shopee tinha antes de ganhar
+   `/orders`.
 10. **ERPs / e-commerce**: Bling, Tiny, Omie, Nuvemshop, WooCommerce, Shopify —
     cada um como adapter, mesmo padrão dos publishers.
 

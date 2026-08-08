@@ -45,6 +45,14 @@ export interface ProductVisionAttributes {
    * (aqui obrigatório) precisam do ID — nunca inventado.
    */
   shopeeCategoryId?: number;
+  /**
+   * ID de categoria do Mercado Livre (ex.: "MLB1051") e tipo de anúncio (ex.:
+   * "gold_special") — ambos obrigatórios pelo `POST /items` da API oficial e
+   * variam por conta/categoria, por isso não são inferidos, só digitados
+   * (mesmo princípio do `shopeeCategoryId` acima).
+   */
+  mercadoLivreCategoryId?: string;
+  mercadoLivreListingTypeId?: string;
 }
 
 /** Resultado de pesquisa de mercado (Agente 2). */

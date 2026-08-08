@@ -11,12 +11,14 @@ import { PricingAgent } from './pricing.agent';
 import { WeightAgent } from './weight.agent';
 import { PublisherAgent } from './publisher.agent';
 import { WebsitePublisher } from './publishers/website.publisher';
-import { ShopeePublisher } from './publishers/marketplace.publishers';
+import { ShopeePublisher, MercadoLivrePublisher } from './publishers/marketplace.publishers';
 import { Product, ProductDocument } from '../modules/database/schemas/product.schema';
 import { PipelineOrchestrator } from '../modules/queues/pipeline.orchestrator';
 import { PIPELINE_ORCHESTRATOR } from '../modules/queues/queue.service';
 import { ShopeeApiClient } from '../modules/integrations/shopee-api.client';
 import { ShopeeConnectionsService } from '../modules/integrations/shopee-connections.service';
+import { MercadoLivreApiClient } from '../modules/integrations/mercado-livre-api.client';
+import { MercadoLivreConnectionsService } from '../modules/integrations/mercado-livre-connections.service';
 
 /**
  * Reúne os 6 agentes + as coleções de adapters (fontes de mercado, publishers).
@@ -40,14 +42,21 @@ import { ShopeeConnectionsService } from '../modules/integrations/shopee-connect
     ShopeeApiClient,
     ShopeeConnectionsService,
     ShopeePublisher,
+    MercadoLivreApiClient,
+    MercadoLivreConnectionsService,
+    MercadoLivrePublisher,
     {
       provide: MARKET_SOURCES,
       useFactory: () => [new SampleMarketSource()],
     },
     {
       provide: MARKETPLACE_PUBLISHERS,
-      inject: [WebsitePublisher, ShopeePublisher],
-      useFactory: (website: WebsitePublisher, shopee: ShopeePublisher) => [website, shopee],
+      inject: [WebsitePublisher, ShopeePublisher, MercadoLivrePublisher],
+      useFactory: (
+        website: WebsitePublisher,
+        shopee: ShopeePublisher,
+        ml: MercadoLivrePublisher,
+      ) => [website, shopee, ml],
     },
   ],
   exports: [
@@ -64,6 +73,8 @@ import { ShopeeConnectionsService } from '../modules/integrations/shopee-connect
     MARKETPLACE_PUBLISHERS,
     ShopeeApiClient,
     ShopeeConnectionsService,
+    MercadoLivreApiClient,
+    MercadoLivreConnectionsService,
   ],
 })
 export class AgentsModule {

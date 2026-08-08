@@ -9,6 +9,14 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
 
 const TOKEN_KEY = 'tp_access';
 const REFRESH_KEY = 'tp_refresh';
+const USER_KEY = 'tp_user';
+
+export interface SessionUser {
+  id: string;
+  email: string;
+  name?: string;
+  role: 'admin' | 'operator' | 'supplier' | 'seller';
+}
 
 /** `persist=false` keeps the session only for the current tab (sessionStorage). */
 export function setToken(token: string, persist = true) {
@@ -35,6 +43,27 @@ export function setRefreshToken(token: string, persist = true) {
     localStorage.removeItem(REFRESH_KEY);
   }
 }
+export function setSessionUser(user: SessionUser, persist = true) {
+  if (typeof window === 'undefined') return;
+  const value = JSON.stringify(user);
+  if (persist) {
+    localStorage.setItem(USER_KEY, value);
+    sessionStorage.removeItem(USER_KEY);
+  } else {
+    sessionStorage.setItem(USER_KEY, value);
+    localStorage.removeItem(USER_KEY);
+  }
+}
+export function getSessionUser(): SessionUser | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(USER_KEY) ?? sessionStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as SessionUser;
+  } catch {
+    return null;
+  }
+}
 export function getRefreshToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(REFRESH_KEY) ?? sessionStorage.getItem(REFRESH_KEY);
@@ -45,6 +74,8 @@ export function clearToken() {
   sessionStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
   sessionStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(USER_KEY);
 }
 
 // O access token dura só 15min (JWT_EXPIRES_IN) — numa sessão longa (subir

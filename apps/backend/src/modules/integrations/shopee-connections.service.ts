@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { randomBytes } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { ShopeeApiClient, ShopeeTokenResult } from './shopee-api.client';
 import {
   ShopeeConnection,
@@ -11,11 +12,14 @@ import {
   ShopeeOauthState,
   ShopeeOauthStateDocument,
 } from '../database/schemas/shopee-oauth-state.schema';
+import { decryptToken, encryptToken } from './token-crypto.util';
 
 /**
  * CRUD da loja Shopee conectada por usuário + renovação automática do
  * access_token perto da expiração. `client` é injetado só pelo refresh —
  * o resto do fluxo de token vive no controller (troca o `code` uma vez).
+ * access_token/refresh_token são criptografados em repouso (AES-256-GCM) —
+ * ver `token-crypto.util.ts`.
  */
 @Injectable()
 export class ShopeeConnectionsService {
@@ -24,7 +28,12 @@ export class ShopeeConnectionsService {
     private readonly connections: Model<ShopeeConnectionDocument>,
     @InjectModel(ShopeeOauthState.name) private readonly states: Model<ShopeeOauthStateDocument>,
     private readonly client: ShopeeApiClient,
+    private readonly config: ConfigService,
   ) {}
+
+  private get encryptionKey(): string {
+    return this.config.get<string>('security.tokenEncryptionKey') ?? '';
+  }
 
   async createState(ownerId: string): Promise<string> {
     const state = randomBytes(24).toString('hex');
@@ -49,9 +58,12 @@ export class ShopeeConnectionsService {
       {
         $set: {
           shopId: tokens.shopId,
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
+          partnerId: this.config.get<string>('shopee.partnerId') ?? '',
+          accessToken: encryptToken(tokens.accessToken, this.encryptionKey),
+          refreshToken: encryptToken(tokens.refreshToken, this.encryptionKey),
           expiresAt,
+          status: 'connected',
+          region: this.config.get<string>('shopee.region') ?? 'BR',
           ...(shopName ? { shopName } : {}),
         },
       },
@@ -63,6 +75,33 @@ export class ShopeeConnectionsService {
     await this.connections.deleteOne({ ownerId });
   }
 
+  async markShopRevoked(shopId: string, reason = 'Permissão revogada pela Shopee'): Promise<void> {
+    await this.connections.updateOne(
+      { shopId },
+      {
+        $set: { status: 'revoked' },
+        $push: { recentErrors: { $each: [reason], $slice: -10 } },
+      },
+    );
+  }
+
+  async recordSync(shopId: string): Promise<void> {
+    await this.connections.updateOne(
+      { shopId },
+      { $set: { lastSyncAt: new Date(), status: 'connected' } },
+    );
+  }
+
+  async recordError(shopId: string, error: string): Promise<void> {
+    await this.connections.updateOne(
+      { shopId },
+      {
+        $set: { status: 'error' },
+        $push: { recentErrors: { $each: [error], $slice: -10 } },
+      },
+    );
+  }
+
   /**
    * Garante um access_token válido, renovando com folga de 5min antes da
    * expiração real (evita corrida em publicações concorrentes perto do limite).
@@ -72,11 +111,18 @@ export class ShopeeConnectionsService {
   ): Promise<{ accessToken: string; shopId: string } | null> {
     const conn = await this.findByOwner(ownerId);
     if (!conn) return null;
+    if (conn.status !== 'connected' || !conn.accessToken || !conn.refreshToken) return null;
 
     const nearExpiry = conn.expiresAt.getTime() - Date.now() < 5 * 60 * 1000;
-    if (!nearExpiry) return { accessToken: conn.accessToken, shopId: conn.shopId };
+    if (!nearExpiry) {
+      return {
+        accessToken: decryptToken(conn.accessToken, this.encryptionKey),
+        shopId: conn.shopId,
+      };
+    }
 
-    const refreshed = await this.client.refreshAccessToken(conn.refreshToken, conn.shopId);
+    const refreshToken = decryptToken(conn.refreshToken, this.encryptionKey);
+    const refreshed = await this.client.refreshAccessToken(refreshToken, conn.shopId);
     await this.saveTokens(ownerId, refreshed);
     return { accessToken: refreshed.accessToken, shopId: refreshed.shopId };
   }

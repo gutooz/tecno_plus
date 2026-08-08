@@ -15,6 +15,9 @@ import { ShopeeApiClient } from '../../modules/integrations/shopee-api.client';
 import { ShopeeConnectionsService } from '../../modules/integrations/shopee-connections.service';
 import { mapProductToShopeeItem } from '../../modules/integrations/shopee-item-mapper';
 import { collectImages } from '../../modules/products/shopee/shopee-mapper';
+import { MercadoLivreApiClient } from '../../modules/integrations/mercado-livre-api.client';
+import { MercadoLivreConnectionsService } from '../../modules/integrations/mercado-livre-connections.service';
+import { mapProductToMercadoLivreItem } from '../../modules/integrations/mercado-livre-item-mapper';
 
 /** Publisher real da Shopee via Shopee Open Platform API. */
 @Injectable()
@@ -125,6 +128,89 @@ export class ShopeePublisher implements MarketplacePublisher {
     );
 
     this.logger.log(`Produto ${product.internalSku} publicado na Shopee (item_id=${itemId}).`);
+    return {
+      channel: this.channel,
+      success: true,
+      externalId: itemId,
+      publishedAt: new Date().toISOString(),
+    };
+  }
+}
+
+/** Publisher real do Mercado Livre via API oficial (OAuth2 + PKCE). */
+@Injectable()
+export class MercadoLivrePublisher implements MarketplacePublisher {
+  readonly channel = MarketplaceChannel.MERCADO_LIVRE;
+  private readonly logger = new Logger(MercadoLivrePublisher.name);
+
+  constructor(
+    private readonly client: MercadoLivreApiClient,
+    private readonly connections: MercadoLivreConnectionsService,
+    @InjectModel(ProductEntity.name) private readonly model: Model<ProductDocument>,
+  ) {}
+
+  get enabled(): boolean {
+    return this.client.configured;
+  }
+
+  async publish(product: Product): Promise<PublishResult> {
+    return this.pushItem(product);
+  }
+
+  async update(product: Product): Promise<PublishResult> {
+    return this.pushItem(product);
+  }
+
+  /** O Mercado Livre não tem "excluir" anúncio — pausar é o equivalente ao unlist da Shopee. */
+  async unpublish(product: Product): Promise<PublishResult> {
+    const auth = await this.requireAuth(product.ownerId);
+    const itemId = product.externalIds?.mercado_livre;
+    if (!itemId) throw new Error('Produto nunca foi publicado no Mercado Livre.');
+
+    await this.client.updateItem(itemId, { status: 'paused' }, auth.accessToken);
+    await this.model.updateOne(
+      { _id: product.id },
+      { $pull: { publishedChannels: MarketplaceChannel.MERCADO_LIVRE } },
+    );
+    return { channel: this.channel, success: true, publishedAt: new Date().toISOString() };
+  }
+
+  private async requireAuth(ownerId: string): Promise<{ accessToken: string; mlUserId: string }> {
+    const auth = await this.connections.getValidAccessToken(ownerId);
+    if (!auth) {
+      throw new Error('Conecte uma conta Mercado Livre em Integracoes antes de publicar.');
+    }
+    return auth;
+  }
+
+  private async pushItem(product: Product): Promise<PublishResult> {
+    const auth = await this.requireAuth(product.ownerId);
+    const { item, description } = mapProductToMercadoLivreItem(product);
+
+    const existingItemId = product.externalIds?.mercado_livre;
+    const json = existingItemId
+      ? await this.client.updateItem<{ id?: string }>(existingItemId, item, auth.accessToken)
+      : await this.client.createItem<{ id?: string }>(item, auth.accessToken);
+
+    const itemId = json.id ? String(json.id) : existingItemId;
+    if (!itemId) throw new Error('Mercado Livre nao retornou id para o produto publicado.');
+
+    await this.client.setItemDescription(
+      itemId,
+      description,
+      auth.accessToken,
+      existingItemId ? 'PUT' : 'POST',
+    );
+
+    await this.model.updateOne(
+      { _id: product.id },
+      {
+        $set: { [`externalIds.${this.channel}`]: itemId },
+        $addToSet: { publishedChannels: this.channel },
+      },
+    );
+
+    this.logger.log(`Produto ${product.internalSku} publicado no Mercado Livre (id=${itemId}).`);
     return {
       channel: this.channel,
       success: true,

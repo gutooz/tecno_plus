@@ -77,12 +77,13 @@ flowchart LR
 Tela dedicada em **Integrações** (`/integrations`), com conexões reais e
 funcionais — não apenas planejadas:
 
-| Canal                    | Tipo                                       | O que faz                                                                                                                                                                                                                                                                                                                       |
-| ------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Shopee**               | API oficial (Shopee Open Platform, OAuth2) | Conecta a loja do lojista (`shop/auth_partner`), publica/atualiza produtos (`product.add_item`/`update_item`, com upload de imagens ao Media Space e consulta de canais logísticos ao vivo), lê pedidos reais (`order.get_order_list`) e testa a conexão (`shop.get_shop_info`) — ver `apps/backend/src/modules/integrations/`. |
-| **Loja online**          | Interna                                    | Publica no catálogo próprio servido pelo frontend.                                                                                                                                                                                                                                                                              |
-| **Facebook / Instagram** | API oficial (Graph API)                    | Postagem diária automática com aprovação via Telegram.                                                                                                                                                                                                                                                                          |
-| Mercado Livre / Amazon   | Em desenvolvimento                         | Interface `MarketplacePublisher` pronta; falta plugar a API oficial de cada um (ver [Roadmap](docs/ROADMAP.md)).                                                                                                                                                                                                                |
+| Canal                    | Tipo                                       | O que faz                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Shopee**               | API oficial (Shopee Open Platform, OAuth2) | Conecta a loja do lojista (`shop/auth_partner`), publica/atualiza produtos (`product.add_item`/`update_item`, com upload de imagens ao Media Space e consulta de canais logísticos ao vivo), lê pedidos reais (`order.get_order_list`) e testa a conexão (`shop.get_shop_info`) — ver `apps/backend/src/modules/integrations/`.                              |
+| **Mercado Livre**        | API oficial (OAuth2 + PKCE)                | Conecta a conta do vendedor (`/authorization` com `code_challenge`/PKCE), publica/atualiza/pausa anúncios (`POST`/`PUT /items`, descrição via `/items/:id/description`) e testa a conexão (`/users/me`) — ver `apps/backend/src/modules/integrations/`. Webhook de pedidos e sync de estoque/preço ainda não implementados (ver [Roadmap](docs/ROADMAP.md)). |
+| **Loja online**          | Interna                                    | Publica no catálogo próprio servido pelo frontend.                                                                                                                                                                                                                                                                                                           |
+| **Facebook / Instagram** | API oficial (Graph API)                    | Postagem diária automática com aprovação via Telegram.                                                                                                                                                                                                                                                                                                       |
+| Amazon                   | Em desenvolvimento                         | Interface `MarketplacePublisher` pronta; falta plugar a API oficial (ver [Roadmap](docs/ROADMAP.md)).                                                                                                                                                                                                                                                        |
 
 A exportação em planilha (`GET /products/export/shopee`, Importação em Massa
 do Seller Center) continua existindo como caminho alternativo/offline — mas a
@@ -175,24 +176,28 @@ comece pelo **Upload**.
 
 REST versionada sob `/api`, documentada em **Swagger** (`/api/docs`).
 
-| Método         | Rota                                           | Descrição                                                    |
-| -------------- | ---------------------------------------------- | ------------------------------------------------------------ |
-| POST           | `/auth/register` `/auth/login` `/auth/refresh` | Autenticação JWT                                             |
-| POST           | `/upload`                                      | Upload de N imagens (multipart) → cria produtos + enfileira  |
-| GET            | `/products`                                    | Lista com busca, filtro, paginação, ordenação                |
-| GET/PUT/DELETE | `/products/:id`                                | Detalhe / editar / excluir                                   |
-| POST           | `/products/:id/duplicate`                      | Duplicar                                                     |
-| POST           | `/products/:id/publish` · `/republish`         | Publicar (`?channel=shopee` para publicar via API na Shopee) |
-| GET            | `/dashboard`                                   | Indicadores + filas                                          |
-| GET            | `/jobs`                                        | Estado das filas                                             |
-| GET            | `/logs`                                        | Logs de execução dos agentes                                 |
-| GET            | `/health`                                      | Saúde (Mongo, provedor de IA)                                |
-| GET            | `/integrations`                                | Status de cada canal (conectado/configurado)                 |
-| GET            | `/integrations/shopee/connect`                 | URL de autorização OAuth da Shopee                           |
-| GET            | `/integrations/shopee/callback`                | Redirect da Shopee após autorização (troca `code` por token) |
-| POST           | `/integrations/shopee/disconnect`              | Desconecta a loja                                            |
-| GET            | `/integrations/shopee/test`                    | Chama `shop.get_shop_info` — prova a conexão ao vivo         |
-| GET            | `/integrations/shopee/orders`                  | Pedidos reais recentes da loja conectada                     |
+| Método         | Rota                                           | Descrição                                                           |
+| -------------- | ---------------------------------------------- | ------------------------------------------------------------------- |
+| POST           | `/auth/register` `/auth/login` `/auth/refresh` | Autenticação JWT                                                    |
+| POST           | `/upload`                                      | Upload de N imagens (multipart) → cria produtos + enfileira         |
+| GET            | `/products`                                    | Lista com busca, filtro, paginação, ordenação                       |
+| GET/PUT/DELETE | `/products/:id`                                | Detalhe / editar / excluir                                          |
+| POST           | `/products/:id/duplicate`                      | Duplicar                                                            |
+| POST           | `/products/:id/publish` · `/republish`         | Publicar (`?channel=shopee` para publicar via API na Shopee)        |
+| GET            | `/dashboard`                                   | Indicadores + filas                                                 |
+| GET            | `/jobs`                                        | Estado das filas                                                    |
+| GET            | `/logs`                                        | Logs de execução dos agentes                                        |
+| GET            | `/health`                                      | Saúde (Mongo, provedor de IA)                                       |
+| GET            | `/integrations`                                | Status de cada canal (conectado/configurado)                        |
+| GET            | `/integrations/shopee/connect`                 | URL de autorização OAuth da Shopee                                  |
+| GET            | `/integrations/shopee/callback`                | Redirect da Shopee após autorização (troca `code` por token)        |
+| POST           | `/integrations/shopee/disconnect`              | Desconecta a loja                                                   |
+| GET            | `/integrations/shopee/test`                    | Chama `shop.get_shop_info` — prova a conexão ao vivo                |
+| GET            | `/integrations/shopee/orders`                  | Pedidos reais recentes da loja conectada                            |
+| GET            | `/integrations/mercado-livre/connect`          | URL de autorização OAuth2+PKCE do Mercado Livre                     |
+| GET            | `/integrations/mercado-livre/callback`         | Redirect do Mercado Livre após autorização (troca `code` por token) |
+| POST           | `/integrations/mercado-livre/disconnect`       | Desconecta a conta                                                  |
+| GET            | `/integrations/mercado-livre/test`             | Chama `/users/me` — prova a conexão ao vivo                         |
 
 ## Decisões técnicas
 
@@ -210,9 +215,14 @@ Resumo (detalhes em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)):
   `ShopeePublisher` real substitui o stub sem tocar no `PublisherAgent`.
 - **Bot do Telegram isolado do HTTP** reaproveitando o mesmo `AppModule` —
   mesma configuração/DI, dois entrypoints (`main.ts` e `telegram.ts`).
-- **OAuth Shopee sem estado em memória** — o `state` do redirect fica no
-  Mongo com TTL de 5min (`shopee_oauth_states`), não em sessão/JWT — funciona
-  mesmo com múltiplas instâncias do backend atrás de um load balancer.
+- **OAuth Shopee/Mercado Livre sem estado em memória** — o `state` do redirect
+  fica no Mongo com TTL curto (`shopee_oauth_states`/`mercado_livre_oauth_states`),
+  não em sessão/JWT — funciona mesmo com múltiplas instâncias do backend atrás
+  de um load balancer. O Mercado Livre usa Authorization Code + PKCE (S256):
+  o `code_verifier` viaja junto do `state`, nunca no navegador.
+- **Tokens criptografados em repouso** — `access_token`/`refresh_token` de
+  Shopee e Mercado Livre são cifrados (AES-256-GCM) antes de ir ao Mongo, via
+  `TOKEN_ENCRYPTION_KEY` (`modules/integrations/token-crypto.util.ts`).
 
 ## Testes e qualidade
 

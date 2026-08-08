@@ -101,16 +101,41 @@ export default () => ({
       .filter(Boolean),
     rateLimitTtl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
     rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
+    // Chave simétrica p/ criptografar (AES-256-GCM) access_token/refresh_token
+    // das integrações (Shopee, Mercado Livre) em repouso no Mongo. Mesmo
+    // padrão do JWT_SECRET: qualquer string forte serve — troque em produção.
+    tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY ?? 'dev-token-key-troque-em-producao',
   },
 
   // ── Shopee Open Platform (integração real via API, não a exportação em massa) ──
   shopee: {
     partnerId: process.env.SHOPEE_PARTNER_ID ?? '',
     partnerKey: process.env.SHOPEE_PARTNER_KEY ?? '',
-    // Produção: https://partner.shopeemobile.com · Sandbox: https://partner.test-stable.shopeemobile.com
+    webhookUrl: process.env.SHOPEE_WEBHOOK_URL ?? '',
+    region: process.env.SHOPEE_REGION ?? 'BR',
+    environment: process.env.SHOPEE_ENVIRONMENT ?? 'production',
+    // API: produção https://partner.shopeemobile.com · sandbox https://partner.test-stable.shopeemobile.com
     host: process.env.SHOPEE_API_HOST ?? 'https://partner.shopeemobile.com',
+    // Tela de autorização: no sandbox a Shopee usa outro domínio.
+    authHost:
+      process.env.SHOPEE_AUTH_HOST ??
+      process.env.SHOPEE_API_HOST ??
+      'https://partner.shopeemobile.com',
     // URL pública do backend + "/api/integrations/shopee/callback" (deve ser https
     // e estar cadastrada exatamente igual no app da Shopee Open Platform).
     redirectUrl: process.env.SHOPEE_REDIRECT_URL ?? '',
+  },
+
+  // ── Mercado Livre (integração real via API, OAuth2 + PKCE) ──
+  mercadoLivre: {
+    clientId: process.env.MERCADO_LIVRE_CLIENT_ID ?? '',
+    clientSecret: process.env.MERCADO_LIVRE_CLIENT_SECRET ?? '',
+    // Autorização (login+aceite do vendedor): domínio varia por país (.com.br no Brasil).
+    authHost: process.env.MERCADO_LIVRE_AUTH_HOST ?? 'https://auth.mercadolivre.com.br',
+    // API de negócio (token, items, categories, users): mesmo host em todos os países.
+    apiHost: process.env.MERCADO_LIVRE_API_HOST ?? 'https://api.mercadolibre.com',
+    // URL pública do backend + "/api/integrations/mercado-livre/callback" (deve ser
+    // https e estar cadastrada exatamente igual no app do DevCenter).
+    redirectUrl: process.env.MERCADO_LIVRE_REDIRECT_URI ?? '',
   },
 });
