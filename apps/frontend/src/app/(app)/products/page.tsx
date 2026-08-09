@@ -49,6 +49,27 @@ function categoryOf(p: ProductRow): string | undefined {
   return p.content?.category || p.vision?.category;
 }
 
+interface ShopeeExportReport {
+  totalProducts: number;
+  exportedProducts: number;
+  exportedRows: number;
+  rejected: number;
+  errors: number;
+  warnings: number;
+}
+
+/** O backend escapa acentos p/ caber no header HTTP (ver `encodeReportHeader`
+ * no backend) — o JSON em si continua válido, só precisa do parse normal. */
+function parseShopeeExportReport(headers: Headers): ShopeeExportReport | null {
+  const raw = headers.get('X-Shopee-Export-Report');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ShopeeExportReport;
+  } catch {
+    return null;
+  }
+}
+
 export default function ProductsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
@@ -119,7 +140,31 @@ export default function ProductsPage() {
     setExporting(true);
     try {
       const ids = [...selected].join(',');
-      const blob = await api.download(`/products/export/shopee?ids=${encodeURIComponent(ids)}`);
+      let { blob, headers } = await api.download(
+        `/products/export/shopee?ids=${encodeURIComponent(ids)}`,
+      );
+      const report = parseShopeeExportReport(headers);
+
+      // Produto sem peso/preço/estoque/descrição é rejeitado e sai do arquivo
+      // (a regra é nunca inventar dado) — sem isso o usuário só via um .xlsx
+      // com zero linhas e nenhuma pista do motivo.
+      if (report && report.exportedRows === 0) {
+        const withReport = await api.download(
+          `/products/export/shopee?ids=${encodeURIComponent(ids)}&report=1`,
+        );
+        blob = withReport.blob;
+        alert(
+          `Nenhum produto foi exportado: ${report.rejected}/${report.totalProducts} rejeitado(s) ` +
+            'por dado obrigatório ausente (peso, preço, estoque ou descrição). Baixando a versão ' +
+            'de conferência (abas "Validação" e "Rejeitados") para ver o motivo de cada um.',
+        );
+      } else if (report && report.rejected > 0) {
+        alert(
+          `${report.exportedProducts}/${report.totalProducts} produto(s) exportado(s) — ` +
+            `${report.rejected} ficaram de fora por dado obrigatório ausente.`,
+        );
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
