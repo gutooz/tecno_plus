@@ -7,12 +7,22 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
 import { DropshippingService } from './dropshipping.service';
+
+// tipo mínimo do arquivo do Multer (evita depender de @types global)
+interface MulterFile {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+}
 
 @ApiTags('dropshipping')
 @ApiBearerAuth()
@@ -45,11 +55,13 @@ export class DropshippingController {
   supplierProducts(
     @CurrentUser() user: AuthUser,
     @Query('search') search?: string,
+    @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.dropshipping.listSupplierProducts(user, {
       search,
+      status,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
@@ -58,6 +70,36 @@ export class DropshippingController {
   @Post('supplier/products')
   createSupplierProduct(@CurrentUser() user: AuthUser, @Body() body: Record<string, unknown>) {
     return this.dropshipping.createSupplierProduct(user, body);
+  }
+
+  /** Sobe fotos e cria produtos rascunho (pending_review) — mesma lógica do
+   * "Envio em Lote" do catálogo principal, só que direto no cadastro do
+   * fornecedor. Título/preço/estoque ficam pra depois, na tela do fornecedor. */
+  @Post('supplier/products/photos')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('files', 50))
+  async uploadSupplierPhotos(@CurrentUser() user: AuthUser, @UploadedFiles() files: MulterFile[]) {
+    const items = await Promise.all(
+      (files ?? []).map((f) =>
+        this.dropshipping.ingestSupplierPhoto(user, { buffer: f.buffer, mimeType: f.mimetype }),
+      ),
+    );
+    return { received: items.length, items };
+  }
+
+  @Post('supplier/telegram/link')
+  generateTelegramLink(@CurrentUser() user: AuthUser) {
+    return this.dropshipping.generateTelegramLinkCode(user);
+  }
+
+  @Get('supplier/telegram/status')
+  telegramStatus(@CurrentUser() user: AuthUser) {
+    return this.dropshipping.telegramStatus(user);
+  }
+
+  @Post('supplier/telegram/unlink')
+  unlinkTelegram(@CurrentUser() user: AuthUser) {
+    return this.dropshipping.unlinkTelegram(user);
   }
 
   @Patch('supplier/products/:id')

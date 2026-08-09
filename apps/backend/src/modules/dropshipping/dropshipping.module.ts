@@ -6,5 +6,6 @@ import { ShopeeProvider } from './marketplaces/shopee.provider';
 @Module({
   controllers: [DropshippingController],
   providers: [DropshippingService, ShopeeProvider],
+  exports: [DropshippingService],
 })
 export class DropshippingModule {}

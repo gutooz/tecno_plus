@@ -59,6 +59,17 @@ export class SupplierProfile {
 
   @Prop({ default: 'pending', enum: ['pending', 'approved', 'rejected', 'blocked'], index: true })
   approvalStatus!: string;
+
+  /** Chat do Telegram vinculado a este fornecedor (fotos enviadas nele viram
+   * produtos pendentes só dele). Vínculo feito via `telegramLinkCode`. */
+  @Prop({ index: true, sparse: true })
+  telegramChatId?: string;
+
+  @Prop()
+  telegramLinkCode?: string;
+
+  @Prop()
+  telegramLinkCodeExpiresAt?: Date;
 }
 
 @Schema({ collection: 'seller_profiles', timestamps: true })
@@ -165,6 +176,18 @@ export class SupplierProduct {
   @Prop({ default: 0, min: 0 })
   minStock!: number;
 
+  /** Peso (kg) — obrigatório pela Shopee para calcular frete. */
+  @Prop()
+  weight?: number;
+
+  /** Dimensões do pacote (cm) — a Shopee trata como tudo-ou-nada. */
+  @Prop({ type: Object })
+  dimensions?: { length: number; width: number; height: number };
+
+  /** Código de barras (GTIN/EAN) — opcional, valida formato quando presente. */
+  @Prop({ default: '' })
+  gtin!: string;
+
   @Prop({ type: Object, default: {} })
   shipping!: Record<string, unknown>;
 
@@ -174,7 +197,13 @@ export class SupplierProduct {
   @Prop({ type: [Object], default: [] })
   variations!: Record<string, unknown>[];
 
-  @Prop({ default: 'active', enum: ['active', 'inactive', 'archived'], index: true })
+  /** `pending_review` = só tem foto(s), aguardando o fornecedor anotar os
+   * dados antes de entrar no catálogo dos vendedores. */
+  @Prop({
+    default: 'active',
+    enum: ['active', 'inactive', 'archived', 'pending_review'],
+    index: true,
+  })
   status!: string;
 
   @Prop({ default: true, index: true })

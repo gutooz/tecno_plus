@@ -45,6 +45,9 @@ export default () => ({
     // Catálogo compartilhado: todos os cadastros do bot caem sob este dono
     // (assim a dedup vale para o time inteiro, sem produto repetido).
     ownerId: process.env.TELEGRAM_OWNER_ID ?? 'bras',
+    // Usado só pra montar o link https://t.me/<usuario>?start=... no site
+    // (vínculo de chat do fornecedor). Sem ele, o site mostra só o código.
+    botUsername: process.env.TELEGRAM_BOT_USERNAME ?? '',
   },
 
   supabase: {

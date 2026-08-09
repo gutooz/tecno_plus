@@ -171,6 +171,47 @@ async function request<T>(path: string, options: RequestInit = {}, isRetry = fal
   return res.json() as Promise<T>;
 }
 
+/** Base do upload multipart via XHR (progresso + retry de token em 401),
+ * reaproveitada por `api.upload()` (fotos do catálogo principal) e
+ * `api.uploadTo()` (qualquer outro endpoint multipart, ex. fotos do
+ * fornecedor). */
+function uploadFiles<T>(
+  url: string,
+  files: File[],
+  onProgress?: (pct: number) => void,
+  extraFields?: Record<string, string | undefined>,
+): Promise<T> {
+  const attempt = (): Promise<T> =>
+    new Promise((resolve, reject) => {
+      const form = new FormData();
+      files.forEach((f) => form.append('files', f));
+      for (const [key, value] of Object.entries(extraFields ?? {})) {
+        if (value !== undefined) form.append(key, value);
+      }
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      const token = getToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () =>
+        xhr.status < 300
+          ? resolve(JSON.parse(xhr.responseText))
+          : reject(new Error(`Upload ${xhr.status}: ${xhr.responseText}`));
+      xhr.onerror = () => reject(new Error('Falha de rede no upload'));
+      xhr.send(form);
+    });
+
+  return attempt().catch(async (err) => {
+    const is401 = err instanceof Error && /^Upload 401/.test(err.message);
+    if (!is401) throw err;
+    if (getRefreshToken() && (await ensureFreshToken())) return attempt();
+    goToLogin();
+    throw new ApiError(401, 'Sessão expirada — faça login novamente.');
+  });
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
@@ -181,7 +222,11 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 
-  async download(path: string): Promise<Blob> {
+  // Devolve os headers junto com o blob — endpoints como o export Shopee mandam
+  // um relatório em `X-Shopee-Export-Report` (ex.: produtos rejeitados) que só
+  // existe aí; descartar os headers faz o chamador achar que um arquivo vazio
+  // (todos os produtos rejeitados) é um download normal, sem explicação.
+  async download(path: string): Promise<{ blob: Blob; headers: Headers }> {
     const fetchOnce = () => {
       const token = getToken();
       const headers = new Headers();
@@ -200,7 +245,7 @@ export const api = {
       const message = await res.text().catch(() => res.statusText);
       throw new ApiError(res.status, `API ${res.status}: ${message}`);
     }
-    return res.blob();
+    return { blob: await res.blob(), headers: res.headers };
   },
 
   /** Upload de múltiplos arquivos com progresso via XHR. */
@@ -212,35 +257,15 @@ export const api = {
     received: number;
     products: { id: string; internalSku: string; status: string }[];
   }> {
-    const attempt = (): Promise<{
-      received: number;
-      products: { id: string; internalSku: string; status: string }[];
-    }> =>
-      new Promise((resolve, reject) => {
-        const form = new FormData();
-        files.forEach((f) => form.append('files', f));
-        if (options?.deferPipeline) form.append('deferPipeline', 'true');
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${BASE}/api/upload`);
-        const token = getToken();
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () =>
-          xhr.status < 300
-            ? resolve(JSON.parse(xhr.responseText))
-            : reject(new Error(`Upload ${xhr.status}: ${xhr.responseText}`));
-        xhr.onerror = () => reject(new Error('Falha de rede no upload'));
-        xhr.send(form);
-      });
-
-    return attempt().catch(async (err) => {
-      const is401 = err instanceof Error && /^Upload 401/.test(err.message);
-      if (!is401) throw err;
-      if (getRefreshToken() && (await ensureFreshToken())) return attempt();
-      goToLogin();
-      throw new ApiError(401, 'Sessão expirada — faça login novamente.');
+    return uploadFiles(`${BASE}/api/upload`, files, onProgress, {
+      deferPipeline: options?.deferPipeline ? 'true' : undefined,
     });
+  },
+
+  /** Mesmo mecanismo do `upload()` (progresso + retry de token via XHR), mas
+   * apontando pra qualquer endpoint multipart — usado pelo cadastro por foto
+   * do fornecedor (`/dropshipping/supplier/products/photos`). */
+  uploadTo<T>(path: string, files: File[], onProgress?: (pct: number) => void): Promise<T> {
+    return uploadFiles<T>(`${BASE}/api${path}`, files, onProgress);
   },
 };

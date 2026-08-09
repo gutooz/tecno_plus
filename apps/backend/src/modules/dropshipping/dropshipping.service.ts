@@ -4,9 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
 import type { AuthUser } from '../auth/jwt.strategy';
+import { StorageService } from '../storage/storage.service';
 import {
   AuditLog,
   AuditLogDocument,
@@ -79,6 +81,8 @@ export class DropshippingService {
     private readonly financialEntries: Model<FinancialEntryDocument>,
     @InjectModel(AuditLog.name) private readonly auditLogs: Model<AuditLogDocument>,
     private readonly shopee: ShopeeProvider,
+    private readonly storage: StorageService,
+    private readonly config: ConfigService,
   ) {}
 
   async me(user: AuthUser) {
@@ -200,11 +204,18 @@ export class DropshippingService {
 
   async listSupplierProducts(
     user: AuthUser,
-    q: { search?: string; page?: number; limit?: number },
+    q: { search?: string; status?: string; page?: number; limit?: number },
   ) {
     this.requireRole(user, ['supplier', 'admin']);
     const { page, limit, skip } = pageLimit(q.page, q.limit);
     const filter: FilterQuery<SupplierProductDocument> = { supplierUserId: user.id };
+    if (q.status) {
+      const statuses = q.status
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (statuses.length) filter.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+    }
     if (q.search) filter.$text = { $search: q.search };
     const [items, total] = await Promise.all([
       this.supplierProducts.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
@@ -231,6 +242,9 @@ export class DropshippingService {
       suggestedPrice: numberFrom(body.suggestedPrice),
       stock: Math.max(0, numberFrom(body.stock)),
       minStock: Math.max(0, numberFrom(body.minStock)),
+      weight: body.weight != null ? numberFrom(body.weight) : undefined,
+      dimensions: body.dimensions ?? undefined,
+      gtin: body.gtin ?? '',
       shipping: body.shipping ?? {},
       fiscal: body.fiscal ?? {},
       variations: Array.isArray(body.variations) ? body.variations : [],
@@ -307,6 +321,118 @@ export class DropshippingService {
     const res = await this.supplierProducts.deleteOne({ _id: id, supplierUserId: user.id });
     if (!res.deletedCount) throw new NotFoundException('Produto não encontrado');
     return { deleted: true };
+  }
+
+  /** Sobe uma foto e cria um produto rascunho (`pending_review`) — nome/preço/
+   * estoque ficam para o fornecedor preencher em "Meus produtos", mesma lógica
+   * do Envio em Lote do catálogo principal. Usado pelo upload web. */
+  async ingestSupplierPhoto(user: AuthUser, file: { buffer: Buffer; mimeType: string }) {
+    this.requireRole(user, ['supplier', 'admin']);
+    const org = await this.ensureOrganization(user, 'supplier', 'Fornecedor');
+    return this.storeSupplierPendingPhoto(user.id, String(org._id), file);
+  }
+
+  /** Mesma ingestão, mas a partir de um chat do Telegram já vinculado — sem
+   * checagem de papel (o vínculo do chat já autoriza). */
+  async ingestSupplierPhotoFromTelegram(
+    chatId: string,
+    file: { buffer: Buffer; mimeType: string },
+  ) {
+    const profile = await this.supplierProfiles.findOne({ telegramChatId: chatId }).lean();
+    if (!profile) return null;
+    return this.storeSupplierPendingPhoto(profile.userId, profile.organizationId, file);
+  }
+
+  /** Chat vinculado a algum fornecedor? Usado pelo bot pra decidir a rota
+   * antes de aplicar o gate de admin (allowlist fixa do `.env`). */
+  async findSupplierByTelegramChat(chatId: string) {
+    return this.supplierProfiles.findOne({ telegramChatId: chatId }, { userId: 1 }).lean();
+  }
+
+  private async storeSupplierPendingPhoto(
+    supplierUserId: string,
+    organizationId: string,
+    file: { buffer: Buffer; mimeType: string },
+  ) {
+    const sku = `FOTO-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const product = await this.supplierProducts.create({
+      supplierUserId,
+      organizationId,
+      name: 'Produto (foto pendente)',
+      supplierSku: sku,
+      images: [],
+      status: 'pending_review',
+      allowSellers: false,
+    });
+    const ext = (file.mimeType.split('/')[1] ?? 'jpg').split('+')[0];
+    const path = `supplier-products/${supplierUserId}/${String(product._id)}/original.${ext}`;
+    const url = await this.storage.upload(path, file.buffer, file.mimeType);
+    product.images = [url];
+    await product.save();
+    return product.toObject();
+  }
+
+  /** Gera um código curto (15min) pra vincular um chat do Telegram a este
+   * fornecedor — enviado como `/vincular <código>` pro bot. */
+  async generateTelegramLinkCode(user: AuthUser) {
+    this.requireRole(user, ['supplier', 'admin']);
+    const org = await this.ensureOrganization(user, 'supplier', 'Fornecedor');
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await this.supplierProfiles.findOneAndUpdate(
+      { userId: user.id },
+      {
+        $set: { telegramLinkCode: code, telegramLinkCodeExpiresAt: expiresAt },
+        $setOnInsert: { organizationId: String(org._id) },
+      },
+      { upsert: true },
+    );
+    return {
+      code,
+      expiresAt,
+      botUsername: this.config.get<string>('telegram.botUsername') ?? '',
+    };
+  }
+
+  async telegramStatus(user: AuthUser) {
+    this.requireRole(user, ['supplier', 'admin']);
+    const profile = await this.supplierProfiles
+      .findOne({ userId: user.id }, { telegramChatId: 1, updatedAt: 1 })
+      .lean();
+    return { linked: Boolean(profile?.telegramChatId) };
+  }
+
+  async unlinkTelegram(user: AuthUser) {
+    this.requireRole(user, ['supplier', 'admin']);
+    await this.supplierProfiles.updateOne(
+      { userId: user.id },
+      { $unset: { telegramChatId: '', telegramLinkCode: '', telegramLinkCodeExpiresAt: '' } },
+    );
+    return { linked: false };
+  }
+
+  /** Consome o código enviado como `/vincular <código>` no chat do Telegram —
+   * chamado pelo bot, sem AuthUser (a prova de posse é o próprio código). */
+  async consumeTelegramLinkCode(
+    chatId: string,
+    code: string,
+  ): Promise<{ ok: true; storeName: string } | { ok: false; reason: 'not_found' | 'expired' }> {
+    const profile = await this.supplierProfiles.findOne({ telegramLinkCode: code });
+    if (!profile) return { ok: false, reason: 'not_found' };
+    if (
+      !profile.telegramLinkCodeExpiresAt ||
+      profile.telegramLinkCodeExpiresAt.getTime() < Date.now()
+    ) {
+      return { ok: false, reason: 'expired' };
+    }
+    profile.telegramChatId = chatId;
+    profile.telegramLinkCode = undefined;
+    profile.telegramLinkCodeExpiresAt = undefined;
+    await profile.save();
+    const company = profile.company as AnyRecord;
+    const personal = profile.personal as AnyRecord;
+    const storeName = String(company?.storeName ?? personal?.responsibleName ?? 'sua loja');
+    return { ok: true, storeName };
   }
 
   async sellerDashboard(user: AuthUser) {

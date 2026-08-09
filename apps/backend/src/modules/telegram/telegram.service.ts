@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UploadsService } from '../uploads/uploads.service';
 import { SocialApprovalService } from '../social/social.service';
+import { DropshippingService } from '../dropshipping/dropshipping.service';
 import { TelegramApi, TgCallbackQuery, TgMessage, TgUpdate } from './telegram-api';
 
 interface PendingPhoto {
@@ -58,6 +59,7 @@ export class TelegramService {
     private readonly config: ConfigService,
     private readonly uploads: UploadsService,
     private readonly social: SocialApprovalService,
+    private readonly dropshipping: DropshippingService,
   ) {
     const token = this.config.get<string>('telegram.botToken') ?? '';
     this.api = token ? new TelegramApi(token) : null;
@@ -108,7 +110,23 @@ export class TelegramService {
     if (!msg) return;
 
     const chatId = msg.chat.id;
-    if (!this.allowed.has(String(chatId))) {
+    const chatIdStr = String(chatId);
+    const rawText = (msg.text ?? '').trim();
+
+    // "/vincular <código>" liga este chat a um fornecedor — funciona mesmo
+    // fora da allowlist fixa do admin, é assim que um chat novo se autoriza.
+    const linkMatch = rawText.match(/^\/?vincular(?:@\w+)?\s+(\S+)$/i);
+    if (linkMatch) {
+      await this.handleSupplierLink(chatId, linkMatch[1]);
+      return;
+    }
+
+    if (!this.allowed.has(chatIdStr)) {
+      const supplier = await this.dropshipping.findSupplierByTelegramChat(chatIdStr);
+      if (supplier) {
+        await this.handleSupplierChat(chatId, msg);
+        return;
+      }
       await this.api.sendMessage(chatId, `⛔ Chat não autorizado. Seu ID: <code>${chatId}</code>`);
       return;
     }
@@ -123,11 +141,16 @@ export class TelegramService {
         return;
       }
       await this.ingestPhoto(chatId, photo);
-      this.bumpAlbumReply(chatId, msg.media_group_id);
+      this.bumpAlbumReply(chatId, msg.media_group_id, {
+        single:
+          '📸 Foto recebida! Vá no site, em <b>Envio em Lote</b>, pra colocar título e preço.',
+        plural: (n) =>
+          `📸 ${n} fotos recebidas! Vá no site, em <b>Envio em Lote</b>, pra colocar título e preço de cada uma.`,
+      });
       return;
     }
 
-    const text = (msg.text ?? '').trim();
+    const text = rawText;
 
     const editingProductId = this.editingCaption.get(chatId);
     if (editingProductId && text) {
@@ -348,13 +371,14 @@ export class TelegramService {
   }
 
   /** Junta as confirmações de um álbum (media_group_id) numa mensagem só. */
-  private bumpAlbumReply(chatId: number, groupId?: string): void {
+  private bumpAlbumReply(
+    chatId: number,
+    groupId: string | undefined,
+    messages: { single: string; plural: (count: number) => string },
+  ): void {
     if (!this.api) return;
     if (!groupId) {
-      void this.api.sendMessage(
-        chatId,
-        '📸 Foto recebida! Vá no site, em <b>Envio em Lote</b>, pra colocar título e preço.',
-      );
+      void this.api.sendMessage(chatId, messages.single);
       return;
     }
     const buf: AlbumReplyBuffer = this.albumReplies.get(groupId) ?? {
@@ -366,12 +390,73 @@ export class TelegramService {
     buf.count++;
     buf.timer = setTimeout(() => {
       this.albumReplies.delete(groupId);
-      void this.api?.sendMessage(
-        chatId,
-        `📸 ${buf.count} fotos recebidas! Vá no site, em <b>Envio em Lote</b>, pra colocar título e preço de cada uma.`,
-      );
+      void this.api?.sendMessage(chatId, messages.plural(buf.count));
     }, TelegramService.ALBUM_DEBOUNCE_MS);
     this.albumReplies.set(groupId, buf);
+  }
+
+  /** Consome o código gerado em "Meus produtos" (área do fornecedor) e vincula
+   * este chat a ele — a partir daí, fotos mandadas aqui viram produtos
+   * pendentes só desse fornecedor. */
+  private async handleSupplierLink(chatId: number, code: string): Promise<void> {
+    if (!this.api) return;
+    const result = await this.dropshipping.consumeTelegramLinkCode(String(chatId), code.trim());
+    if (!result.ok) {
+      const reason =
+        result.reason === 'expired'
+          ? 'Código expirado — gere um novo em Meus produtos, no site.'
+          : 'Código inválido.';
+      await this.api.sendMessage(chatId, `⚠️ ${reason}`);
+      return;
+    }
+    await this.api.sendMessage(
+      chatId,
+      `✅ Chat vinculado à loja <b>${result.storeName}</b>! Agora é só mandar as fotos dos produtos aqui — elas ficam pendentes pra você preencher nome, preço, estoque e peso em <b>Meus produtos</b>, no site.`,
+    );
+  }
+
+  /** Fluxo de um chat de fornecedor já vinculado: só recebe foto(s) e
+   * confirma — sem o pipeline de IA, sem legenda/preço guiados (isso é feito
+   * no site). */
+  private async handleSupplierChat(chatId: number, msg: TgMessage): Promise<void> {
+    if (!this.api) return;
+    const photo = this.extractPhoto(msg);
+    if (photo) {
+      try {
+        const path = await this.api.getFilePath(photo.fileId);
+        const buffer = await this.api.download(path);
+        const created = await this.dropshipping.ingestSupplierPhotoFromTelegram(String(chatId), {
+          buffer,
+          mimeType: photo.mimeType,
+        });
+        if (!created) {
+          await this.api.sendMessage(chatId, '⚠️ Chat não vinculado a nenhum fornecedor.');
+          return;
+        }
+        this.bumpAlbumReply(chatId, msg.media_group_id, {
+          single: '📸 Foto recebida! Vá em <b>Meus produtos</b>, no site, pra preencher os dados.',
+          plural: (n) =>
+            `📸 ${n} fotos recebidas! Vá em <b>Meus produtos</b>, no site, pra preencher os dados de cada uma.`,
+        });
+      } catch (e) {
+        this.logger.error(`ingest telegram fornecedor: ${String(e)}`);
+        await this.api.sendMessage(chatId, `❌ Falha ao processar a foto: ${String(e)}`);
+      }
+      return;
+    }
+
+    const text = (msg.text ?? '').trim();
+    if (
+      text.startsWith('/start') ||
+      text.startsWith('/help') ||
+      text.startsWith('/ajuda') ||
+      TelegramService.GREETING_RE.test(text)
+    ) {
+      await this.api.sendMessage(
+        chatId,
+        '📦 Mande a(s) foto(s) do(s) produto(s) — pode ser várias de uma vez. Depois vá em <b>Meus produtos</b>, no site, pra preencher nome, preço, estoque e peso.',
+      );
+    }
   }
 
   private async sendHelp(chatId: number): Promise<void> {
