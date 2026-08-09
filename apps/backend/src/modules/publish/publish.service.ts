@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { MarketplaceChannel, Product as ProductDomain } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { PublisherAgent } from '../../agents/publisher.agent';
+
+function productIdValues(id: string): unknown[] {
+  return Types.ObjectId.isValid(id) ? [new Types.ObjectId(id), id] : [id];
+}
 
 /**
  * Serviço de publicação chamado pela API (publish/republish). Reusa o
@@ -22,7 +26,11 @@ export class PublishService {
     id: string,
     channel: MarketplaceChannel = MarketplaceChannel.WEBSITE,
   ) {
-    const doc = await this.products.findOne({ _id: id, ownerId });
+    const raw = await this.products.collection.findOne({
+      ownerId,
+      _id: { $in: productIdValues(id) },
+    } as never);
+    const doc = raw ? this.products.hydrate(raw) : null;
     if (!doc) throw new NotFoundException('Produto não encontrado');
     const domain = { id: String(doc._id), ...doc.toObject() } as unknown as ProductDomain;
     return this.publisher.publish(domain, channel);

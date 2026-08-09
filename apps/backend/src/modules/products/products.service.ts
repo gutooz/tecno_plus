@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { ProductStatus, QueueName } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { QueueService } from '../queues/queue.service';
@@ -27,6 +27,10 @@ function setDeep(obj: Record<string, unknown>, path: string[], value: unknown): 
     node = node[k] as Record<string, unknown>;
   }
   node[path[path.length - 1]] = value;
+}
+
+function productIdValues(id: string): unknown[] {
+  return Types.ObjectId.isValid(id) ? [new Types.ObjectId(id), id] : [id];
 }
 
 @Injectable()
@@ -70,8 +74,34 @@ export class ProductsService {
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
+  private productByOwnerFilter(ownerId: string, id: string): Record<string, unknown> {
+    return { ownerId, _id: { $in: productIdValues(id) } };
+  }
+
+  private async findRawById(ownerId: string, id: string): Promise<Record<string, unknown> | null> {
+    return this.model.collection.findOne(this.productByOwnerFilter(ownerId, id)) as Promise<Record<
+      string,
+      unknown
+    > | null>;
+  }
+
+  private async findOneAndUpdateRaw(
+    ownerId: string,
+    id: string,
+    $set: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | null> {
+    const result = (await this.model.collection.findOneAndUpdate(
+      this.productByOwnerFilter(ownerId, id),
+      { $set },
+      { returnDocument: 'after' },
+    )) as unknown;
+    return result && typeof result === 'object' && 'value' in result
+      ? ((result as { value: Record<string, unknown> | null }).value ?? null)
+      : ((result as Record<string, unknown> | null) ?? null);
+  }
+
   async findById(ownerId: string, id: string) {
-    const doc = await this.model.findOne({ _id: id, ownerId }).lean();
+    const doc = await this.findRawById(ownerId, id);
     if (!doc) throw new NotFoundException('Produto não encontrado');
     return doc;
   }
@@ -83,7 +113,7 @@ export class ProductsService {
     //   MongoServerError 28: "Cannot create field 'x' in element {pricing: null}".
     // Por isso expandimos as chaves e gravamos o objeto pai INTEIRO, semeado com o valor
     // atual: assim null vira objeto e nenhum campo já existente é perdido.
-    const current = await this.model.findOne({ _id: id, ownerId }).lean();
+    const current = await this.findRawById(ownerId, id);
     if (!current) throw new NotFoundException('Produto não encontrado');
 
     const $set: Record<string, unknown> = {};
@@ -101,15 +131,13 @@ export class ProductsService {
       $set[root] = base;
     }
 
-    const doc = await this.model
-      .findOneAndUpdate({ _id: id, ownerId }, { $set }, { new: true })
-      .lean();
+    const doc = await this.findOneAndUpdateRaw(ownerId, id, $set);
     if (!doc) throw new NotFoundException('Produto não encontrado');
     return doc;
   }
 
   async remove(ownerId: string, id: string) {
-    const res = await this.model.deleteOne({ _id: id, ownerId });
+    const res = await this.model.collection.deleteOne(this.productByOwnerFilter(ownerId, id));
     if (res.deletedCount === 0) throw new NotFoundException('Produto não encontrado');
     return { deleted: true };
   }
@@ -129,7 +157,7 @@ export class ProductsService {
   }
 
   async startPipeline(ownerId: string, id: string) {
-    const doc = await this.model.findOne({ _id: id, ownerId });
+    const doc = await this.findRawById(ownerId, id);
     if (!doc) throw new NotFoundException('Produto nÃ£o encontrado');
     await this.queue.startPipeline({ productId: id, ownerId });
     return { queued: true };
@@ -142,7 +170,7 @@ export class ProductsService {
    * zero. Como qualquer etapa do pipeline, encadeia preço → publicação.
    */
   async regenerateImages(ownerId: string, id: string) {
-    const doc = await this.model.findOne({ _id: id, ownerId });
+    const doc = await this.findRawById(ownerId, id);
     if (!doc) throw new NotFoundException('Produto não encontrado');
     await this.queue.enqueue(QueueName.IMAGE, { productId: id, ownerId });
     return { queued: true };
@@ -158,7 +186,7 @@ export class ProductsService {
     const trimmed = prompt.trim();
     if (!trimmed) throw new BadRequestException('Descreva o que quer mudar na foto.');
 
-    const doc = await this.model.findOne({ _id: id, ownerId }).lean();
+    const doc = await this.findRawById(ownerId, id);
     if (!doc) throw new NotFoundException('Produto não encontrado');
 
     const images = (doc.images ?? {}) as { original?: string; shopee?: string[] };
@@ -174,15 +202,17 @@ export class ProductsService {
     if (result.webp) $set['images.webp'] = result.webp;
     if (result.thumbnail) $set['images.thumbnail'] = result.thumbnail;
 
-    const updated = await this.model
-      .findOneAndUpdate({ _id: id, ownerId }, { $set }, { new: true })
-      .lean();
+    const updated = await this.findOneAndUpdateRaw(ownerId, id, $set);
     if (!updated) throw new NotFoundException('Produto não encontrado');
     return updated;
   }
 
   async regenerateImagesBatch(ownerId: string, ids: string[]) {
-    const docs = await this.model.find({ _id: { $in: ids }, ownerId }, { _id: 1 }).lean();
+    const docs = await this.model.collection
+      .find({ ownerId, _id: { $in: ids.flatMap(productIdValues) } } as never, {
+        projection: { _id: 1 },
+      })
+      .toArray();
     await Promise.all(
       docs.map((d) => this.queue.enqueue(QueueName.IMAGE, { productId: String(d._id), ownerId })),
     );
@@ -201,10 +231,12 @@ export class ProductsService {
    * produto com peso medido e sem medidas ganha só as medidas.
    */
   async estimateWeightBatch(ownerId: string, ids: string[]) {
-    const filter: FilterQuery<ProductDocument> = { ownerId };
-    if (ids.length) filter._id = { $in: ids };
+    const filter: Record<string, unknown> = { ownerId };
+    if (ids.length) filter._id = { $in: ids.flatMap(productIdValues) };
 
-    const docs = await this.model.find(filter, { _id: 1, vision: 1 }).lean();
+    const docs = await this.model.collection
+      .find(filter, { projection: { _id: 1, vision: 1 } })
+      .toArray();
 
     const num = (v: unknown): boolean => typeof v === 'number' && v > 0;
     const gaps = (d: (typeof docs)[number]) => {
@@ -247,7 +279,9 @@ export class ProductsService {
           continue;
         }
 
-        await this.model.updateOne({ _id: id }, { $set: set });
+        await this.model.collection.updateOne({ _id: { $in: productIdValues(id) } } as never, {
+          $set: set,
+        });
         filled++;
         this.logger.log(
           `Envio estimado p/ ${id}: ${JSON.stringify(set)} ` +
@@ -288,13 +322,13 @@ export class ProductsService {
     ids?: string[],
     opts?: { includeReportSheets?: boolean },
   ): Promise<ShopeeExportResult> {
-    const filter: FilterQuery<ProductDocument> = { ownerId };
-    if (ids?.length) filter._id = { $in: ids };
+    const filter: Record<string, unknown> = { ownerId };
+    if (ids?.length) filter._id = { $in: ids.flatMap(productIdValues) };
 
-    const products = (await this.model
+    const products = (await this.model.collection
       .find(filter)
       .sort({ createdAt: -1 })
-      .lean()) as unknown as SourceProduct[];
+      .toArray()) as unknown as SourceProduct[];
 
     const result = await exportShopeeWorkbook(products, {
       includeReportSheets: opts?.includeReportSheets,
