@@ -369,7 +369,7 @@ export function validate(products: MappedProduct[], template: ShopeeTemplate): I
       if (hasCanalColumns) {
         const algumAtivo = CANAL_KEYS.some((k) => {
           const v = text(row, k).toLowerCase();
-          return v === 'ativar' || v === 'ativado' || v === 'on' || v === 'sim';
+          return v === 'ligado' || v === 'ativar' || v === 'ativado' || v === 'on' || v === 'sim';
         });
         if (!algumAtivo) {
           add(
