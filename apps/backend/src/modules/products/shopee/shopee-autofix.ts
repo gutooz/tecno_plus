@@ -25,8 +25,10 @@ export interface Correction {
 
 // Emoji e símbolos pictográficos + juntores/variação (proibidos em título Shopee).
 // eslint-disable-next-line no-misleading-character-class -- remoção proposital de ZWJ/seletores de variação
-const EMOJI_RE =
-  /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}]/gu;
+const EMOJI_RE = new RegExp(
+  '[\\u{1F000}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\u{2190}-\\u{21FF}\\u{2B00}-\\u{2BFF}\\u{FE00}-\\u{FE0F}\\u{200D}\\u{20E3}]',
+  'gu',
+);
 // Caracteres de controle (exceto tab/newline que já colapsamos).
 // eslint-disable-next-line no-control-regex -- remoção proposital de caracteres de controle
 const CONTROL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
@@ -78,6 +80,21 @@ function clampLength(s: string, max: number): string {
 function randomStock(): number {
   const { defaultStockMin: min, defaultStockMax: max } = SHOPEE_LIMITS;
   return Math.floor(min + Math.random() * (max - min + 1));
+}
+
+function ean13CheckDigit(base12: string): string {
+  const sum = [...base12].reduce((total, ch, index) => {
+    const digit = Number(ch);
+    return total + digit * (index % 2 === 0 ? 1 : 3);
+  }, 0);
+  return String((10 - (sum % 10)) % 10);
+}
+
+function correctedEan13(value: unknown): string | null {
+  const raw = String(value ?? '').trim();
+  if (!/^\d{13}$/.test(raw)) return null;
+  const expected = ean13CheckDigit(raw.slice(0, 12));
+  return raw.endsWith(expected) ? null : `${raw.slice(0, 12)}${expected}`;
 }
 
 function push(
@@ -182,6 +199,12 @@ export function autofix(products: MappedProduct[], template: ShopeeTemplate): Co
       }
 
       // ── SKU único ─────────────────────────────────────────────────────
+      const fixedGtin = correctedEan13(v.gtin);
+      if (fixedGtin) {
+        push(corrections, mp, 'gtin', v.gtin, fixedGtin, 'Digito verificador EAN-13 corrigido.');
+        v.gtin = fixedGtin;
+      }
+
       const sku = String(v.sku ?? '').trim();
       if (sku) {
         let unique = sku;

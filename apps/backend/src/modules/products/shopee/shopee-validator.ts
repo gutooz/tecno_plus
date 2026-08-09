@@ -65,6 +65,14 @@ function number(row: ShopeeRow, key: string): number | undefined {
   return undefined;
 }
 
+function isValidEan13(value: string): boolean {
+  if (!/^\d{13}$/.test(value)) return false;
+  const digits = [...value].map(Number);
+  const check = digits.pop();
+  const sum = digits.reduce((total, digit, index) => total + digit * (index % 2 === 0 ? 1 : 3), 0);
+  return (10 - (sum % 10)) % 10 === check;
+}
+
 /** Valida todas as linhas de todos os produtos. */
 export function validate(products: MappedProduct[], template: ShopeeTemplate): Issue[] {
   const issues: Issue[] = [];
@@ -286,6 +294,14 @@ export function validate(products: MappedProduct[], template: ShopeeTemplate): I
           'warning',
           'gtin_invalido',
           `GTIN "${gtin}" deve ter ${SHOPEE_LIMITS.gtinMinLength}–${SHOPEE_LIMITS.gtinMaxLength} dígitos numéricos.`,
+          'gtin',
+        );
+      } else if (gtin.length === 13 && !isValidEan13(gtin)) {
+        add(
+          i,
+          'warning',
+          'gtin_checksum_invalido',
+          `GTIN "${gtin}" tem digito verificador EAN-13 invalido.`,
           'gtin',
         );
       }
