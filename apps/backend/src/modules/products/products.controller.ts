@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Header,
   Param,
   Post,
   Put,
@@ -57,7 +56,6 @@ export class ProductsController {
    * importador do Seller Center espera a estrutura exata do template.
    */
   @Get('export/shopee')
-  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   async exportShopee(
     @CurrentUser() user: AuthUser,
     @Res() res: Response,
@@ -74,16 +72,20 @@ export class ProductsController {
     });
     const stamp = new Date().toISOString().slice(0, 10);
     const suffix = withReport ? '-conferencia' : '';
+    const filename = `shopee-lote-${stamp}${suffix}.xlsx`;
     res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="shopee-lote-${stamp}${suffix}.xlsx"`,
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
     // O relatório antes só existia no log do servidor — quem baixava não tinha
     // como saber que produtos ficaram de fora, nem qual template foi usado.
     // Vai escapado: header não aceita os acentos do texto (ver encodeReportHeader).
     res.setHeader('X-Shopee-Export-Report', encodeReportHeader(summary));
-    res.setHeader('Access-Control-Expose-Headers', 'X-Shopee-Export-Report');
-    res.send(buffer);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Shopee-Export-Report');
+    res.end(buffer);
   }
 
   @Post('publish-batch')

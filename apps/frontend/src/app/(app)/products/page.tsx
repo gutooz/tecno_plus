@@ -70,6 +70,30 @@ function parseShopeeExportReport(headers: Headers): ShopeeExportReport | null {
   }
 }
 
+function downloadFilename(headers: Headers, fallback: string): string {
+  const disposition = headers.get('Content-Disposition');
+  const match =
+    disposition?.match(/filename\*=UTF-8''([^;]+)/i) ?? disposition?.match(/filename="?([^"]+)"?/i);
+  if (!match?.[1]) return fallback;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function ProductsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
@@ -153,6 +177,7 @@ export default function ProductsPage() {
           `/products/export/shopee?ids=${encodeURIComponent(ids)}&report=1`,
         );
         blob = withReport.blob;
+        headers = withReport.headers;
         alert(
           `Nenhum produto foi exportado: ${report.rejected}/${report.totalProducts} rejeitado(s) ` +
             'por dado obrigatório ausente (peso, preço, estoque ou descrição). Baixando a versão ' +
@@ -165,12 +190,10 @@ export default function ProductsPage() {
         );
       }
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `produtos-${new Date().toISOString().slice(0, 10)}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveBlob(
+        blob,
+        downloadFilename(headers, `produtos-${new Date().toISOString().slice(0, 10)}.xlsx`),
+      );
     } catch (e) {
       alert(`Não foi possível gerar o Excel: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

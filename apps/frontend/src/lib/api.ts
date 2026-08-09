@@ -5,7 +5,8 @@
  * (MVP) e injeta o Bearer automaticamente. Em produção, migrar para cookies
  * httpOnly + refresh silencioso (ver roadmap).
  */
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
+const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
+const BASE = RAW_BASE.replace(/\/+$/, '').replace(/\/api$/i, '');
 
 const TOKEN_KEY = 'tp_access';
 const REFRESH_KEY = 'tp_refresh';
