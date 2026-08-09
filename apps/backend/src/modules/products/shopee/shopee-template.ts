@@ -1,3 +1,4 @@
+import { basename, isAbsolute, join } from 'path';
 import { promises as fs } from 'fs';
 import ExcelJS from 'exceljs';
 
@@ -728,6 +729,33 @@ export async function loadOfficialTemplate(path: string): Promise<ShopeeTemplate
   };
 }
 
+async function readablePath(path: string): Promise<string | null> {
+  try {
+    await fs.access(path);
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTemplatePath(path: string): Promise<string | null> {
+  const candidates = [
+    path,
+    join(process.cwd(), 'apps', 'backend', 'local-templates', basename(path)),
+  ];
+
+  if (!isAbsolute(path)) {
+    candidates.push(join(process.cwd(), path));
+  }
+
+  for (const candidate of candidates) {
+    const found = await readablePath(candidate);
+    if (found) return found;
+  }
+
+  return null;
+}
+
 /**
  * Resolve o template a usar: arquivo oficial se apontado e legível; senão, a
  * referência BR. Nunca falha — no pior caso retorna a referência.
@@ -737,13 +765,23 @@ export async function resolveShopeeTemplate(opts?: {
 }): Promise<{ template: ShopeeTemplate; warning?: string }> {
   const path = opts?.templatePath ?? process.env.SHOPEE_TEMPLATE_PATH;
   if (path) {
+    const resolvedPath = await resolveTemplatePath(path);
+    if (!resolvedPath) {
+      return {
+        template: REFERENCE_TEMPLATE_BR,
+        warning: `Template oficial não encontrado em "${path}" nem em local-templates/${basename(
+          path,
+        )}. Usando o esquema de referência.`,
+      };
+    }
+
     try {
-      const template = await loadOfficialTemplate(path);
+      const template = await loadOfficialTemplate(resolvedPath);
       return { template };
     } catch (err) {
       return {
         template: REFERENCE_TEMPLATE_BR,
-        warning: `Falha ao ler o template oficial em "${path}" (${
+        warning: `Falha ao ler o template oficial em "${resolvedPath}" (${
           err instanceof Error ? err.message : String(err)
         }). Usando o esquema de referência.`,
       };

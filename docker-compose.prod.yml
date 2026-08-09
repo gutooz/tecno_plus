@@ -34,6 +34,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+    volumes:
+      - ./apps/backend/local-templates:/app/apps/backend/local-templates:ro
     expose:
       - "3333"
 
@@ -51,6 +53,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+    volumes:
+      - ./apps/backend/local-templates:/app/apps/backend/local-templates:ro
 
   frontend:
     build:
