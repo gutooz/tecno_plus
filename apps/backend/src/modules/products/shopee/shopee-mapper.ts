@@ -93,6 +93,19 @@ function idOf(p: SourceProduct): string {
   return p.internalSku ?? '';
 }
 
+function publicImageUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return trimmed;
+  }
+}
+
 /**
  * Coleta URLs de imagem: só as variantes já tratadas pela IA (recorte/fundo/lote de
  * uso), nunca a foto original enviada pelo operador — ela costuma ter fundo bagunçado,
@@ -106,7 +119,7 @@ export function collectImages(images: Record<string, unknown> | null | undefined
   const seen = new Set<string>();
   const out: string[] = [];
   for (const url of ordered) {
-    const u = url.trim();
+    const u = publicImageUrl(url);
     if (u && !seen.has(u)) {
       seen.add(u);
       out.push(u);
