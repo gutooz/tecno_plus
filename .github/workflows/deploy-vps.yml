@@ -86,7 +86,6 @@ jobs:
             --exclude '.env.*' \
             --exclude '.deploy-env' \
             --exclude '.codex-local' \
-            --exclude 'apps/backend/local-templates' \
             -e "$SSH_CMD" \
             ./ "$VPS_USER@$VPS_HOST:$APP_DIR/"
           scp -P "$PORT" \

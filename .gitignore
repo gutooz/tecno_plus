@@ -39,5 +39,7 @@ coverage/
 tmp/
 *.tmp
 
-# Templates oficiais baixados do Seller Center (têm ID da loja embutido — não versionar)
-apps/backend/local-templates/
+# Templates oficiais baixados do Seller Center
+apps/backend/local-templates/*
+!apps/backend/local-templates/
+!apps/backend/local-templates/shopee-mass-upload-basic-template.xlsx
