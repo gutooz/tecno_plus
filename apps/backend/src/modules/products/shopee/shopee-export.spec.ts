@@ -84,6 +84,19 @@ describe('Shopee export — mapper/autofix/validator', () => {
     expect(peso?.level).toBe('error');
   });
 
+  it('corrige digito verificador de GTIN-14 antes de exportar', () => {
+    const p = weighedProduct();
+    p.vision = { ...(p.vision ?? {}), barcode: '17896380252607' };
+
+    const mapped = mapProducts([p], REFERENCE_TEMPLATE_BR);
+    const corrections = autofix(mapped, REFERENCE_TEMPLATE_BR);
+    const issues = validate(mapped, REFERENCE_TEMPLATE_BR);
+
+    expect(mapped[0].rows[0].values.gtin).toBe('17896380252609');
+    expect(corrections.find((c) => c.column === 'gtin')).toBeDefined();
+    expect(issues.find((i) => i.code === 'gtin_checksum_invalido')).toBeUndefined();
+  });
+
   it('expande variações em uma linha por opção, com o mesmo nº de integração', () => {
     const withVars: SourceProduct = {
       ...fullProduct(),

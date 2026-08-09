@@ -82,19 +82,19 @@ function randomStock(): number {
   return Math.floor(min + Math.random() * (max - min + 1));
 }
 
-function ean13CheckDigit(base12: string): string {
-  const sum = [...base12].reduce((total, ch, index) => {
+function gtinCheckDigit(body: string): string {
+  const sum = [...body].reverse().reduce((total, ch, index) => {
     const digit = Number(ch);
-    return total + digit * (index % 2 === 0 ? 1 : 3);
+    return total + digit * (index % 2 === 0 ? 3 : 1);
   }, 0);
   return String((10 - (sum % 10)) % 10);
 }
 
-function correctedEan13(value: unknown): string | null {
+function correctedGtin(value: unknown): string | null {
   const raw = String(value ?? '').trim();
-  if (!/^\d{13}$/.test(raw)) return null;
-  const expected = ean13CheckDigit(raw.slice(0, 12));
-  return raw.endsWith(expected) ? null : `${raw.slice(0, 12)}${expected}`;
+  if (!/^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/.test(raw)) return null;
+  const expected = gtinCheckDigit(raw.slice(0, -1));
+  return raw.endsWith(expected) ? null : `${raw.slice(0, -1)}${expected}`;
 }
 
 function push(
@@ -198,13 +198,14 @@ export function autofix(products: MappedProduct[], template: ShopeeTemplate): Co
         }
       }
 
-      // ── SKU único ─────────────────────────────────────────────────────
-      const fixedGtin = correctedEan13(v.gtin);
+      // ── GTIN: corrige apenas o dígito verificador de códigos já lidos ──
+      const fixedGtin = correctedGtin(v.gtin);
       if (fixedGtin) {
-        push(corrections, mp, 'gtin', v.gtin, fixedGtin, 'Digito verificador EAN-13 corrigido.');
+        push(corrections, mp, 'gtin', v.gtin, fixedGtin, 'Digito verificador GTIN corrigido.');
         v.gtin = fixedGtin;
       }
 
+      // ── SKU único ─────────────────────────────────────────────────────
       const sku = String(v.sku ?? '').trim();
       if (sku) {
         let unique = sku;
