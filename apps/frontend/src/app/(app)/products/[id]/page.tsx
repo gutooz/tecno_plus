@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowLeft, Send, X, AlertTriangle } from 'lucide-react';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { Button, Card, Input, Skeleton, StatusPill } from '@/components/ui';
 import { formatBRL, formatPercent, productGallery } from '@/lib/utils';
 
@@ -86,9 +86,18 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     };
   }, [lightbox]);
 
-  const { data: p, isLoading } = useQuery({
+  const {
+    data: p,
+    error,
+    isError,
+    isFetching,
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: ['product', id],
     queryFn: () => api.get<ProductDetail>(`/products/${id}`),
+    retry: (failureCount, err) =>
+      !(err instanceof ApiError && err.status === 404) && failureCount < 2,
     refetchInterval: (q) =>
       ['processing', 'uploaded'].includes(q.state.data?.status ?? '') ? 3000 : false,
   });
@@ -193,7 +202,18 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
-  if (isLoading || !p) return <DetailSkeleton />;
+  if (isLoading) return <DetailSkeleton />;
+  if (isError || !p) {
+    return (
+      <ProductDetailError
+        error={error}
+        isFetching={isFetching}
+        onRetry={() => {
+          void refetch();
+        }}
+      />
+    );
+  }
 
   // Mostra as 3 imagens Shopee (produto recortado em fundo limpo) quando prontas;
   // senão, cai nas variantes antigas. A foto original nunca aparece aqui.
@@ -500,6 +520,55 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl bg-surface-2 p-3">
       <p className="text-xs text-muted">{label}</p>
       <p className="nums mt-0.5 text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function ProductDetailError({
+  error,
+  isFetching,
+  onRetry,
+}: {
+  error: Error | null;
+  isFetching: boolean;
+  onRetry: () => void;
+}) {
+  const notFound = error instanceof ApiError && error.status === 404;
+  const title = notFound ? 'Produto não encontrado' : 'Não foi possível carregar o produto';
+  const description = notFound
+    ? 'Esse item não existe mais no catálogo de produção ou pertence a outro usuário.'
+    : (error?.message ?? 'A API não respondeu como esperado.');
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <Link
+        href="/products"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-fg"
+      >
+        <ArrowLeft size={16} />
+        Produtos
+      </Link>
+
+      <Card className="flex flex-col items-start gap-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warning/10 text-warning">
+            <AlertTriangle size={20} />
+          </span>
+          <div>
+            <p className="text-base font-semibold">{title}</p>
+            <p className="mt-1 text-sm text-muted">{description}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" loading={isFetching} onClick={onRetry}>
+            Tentar novamente
+          </Button>
+          <Link href="/products">
+            <Button size="sm">Voltar ao catálogo</Button>
+          </Link>
+        </div>
+      </Card>
     </div>
   );
 }
