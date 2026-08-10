@@ -96,6 +96,17 @@ export default () => ({
     tier4: parseFloat(process.env.PRICING_MARKUP_TIER4 ?? '0.50'),
   },
 
+  asaas: {
+    apiKey: process.env.ASAAS_API_KEY ?? '',
+    environment: process.env.ASAAS_ENVIRONMENT ?? 'sandbox',
+    baseUrl:
+      process.env.ASAAS_API_URL ??
+      (process.env.ASAAS_ENVIRONMENT === 'production'
+        ? 'https://api.asaas.com/v3'
+        : 'https://api-sandbox.asaas.com/v3'),
+    platformFee: parseFloat(process.env.ASAAS_PLATFORM_FEE ?? '3'),
+  },
+
   security: {
     // Aceita 1+ origens separadas por vírgula (ex.: domínio próprio + onrender.com).
     corsOrigin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000')

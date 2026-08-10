@@ -51,6 +51,31 @@ export class DropshippingController {
     return this.dropshipping.supplierDashboard(user);
   }
 
+  @Get('supplier/settings')
+  supplierSettings(@CurrentUser() user: AuthUser) {
+    return this.dropshipping.supplierSettings(user);
+  }
+
+  @Patch('supplier/settings')
+  updateSupplierSettings(@CurrentUser() user: AuthUser, @Body() body: Record<string, unknown>) {
+    return this.dropshipping.updateSupplierSettings(user, body);
+  }
+
+  @Post('supplier/settings/logo')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('files', 1))
+  async uploadSupplierLogo(@CurrentUser() user: AuthUser, @UploadedFiles() files: MulterFile[]) {
+    return this.dropshipping.uploadSupplierLogo(user, {
+      buffer: files?.[0]?.buffer,
+      mimeType: files?.[0]?.mimetype ?? '',
+    });
+  }
+
+  @Get('supplier/address/cep/:cep')
+  lookupCep(@CurrentUser() user: AuthUser, @Param('cep') cep: string) {
+    return this.dropshipping.lookupCep(user, cep);
+  }
+
   @Get('supplier/products')
   supplierProducts(
     @CurrentUser() user: AuthUser,
@@ -169,6 +194,16 @@ export class DropshippingController {
     return this.dropshipping.sellerOrdersList(user);
   }
 
+  @Get('seller/finance')
+  sellerFinance(@CurrentUser() user: AuthUser) {
+    return this.dropshipping.sellerFinance(user);
+  }
+
+  @Post('seller/finance/:id/pix')
+  sellerFinancePix(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.dropshipping.createSellerFinancePix(user, id);
+  }
+
   @Post('seller/orders/import')
   importMarketplaceOrder(@CurrentUser() user: AuthUser, @Body() body: Record<string, unknown>) {
     return this.dropshipping.importMarketplaceOrder(user, body);
@@ -177,5 +212,16 @@ export class DropshippingController {
   @Get('admin/dashboard')
   adminDashboard(@CurrentUser() user: AuthUser) {
     return this.dropshipping.adminDashboard(user);
+  }
+}
+
+@ApiTags('dropshipping')
+@Controller('dropshipping/asaas')
+export class AsaasWebhookController {
+  constructor(private readonly dropshipping: DropshippingService) {}
+
+  @Post('webhook')
+  webhook(@Body() body: Record<string, unknown>) {
+    return this.dropshipping.asaasWebhook(body);
   }
 }

@@ -57,26 +57,6 @@ export default function SupplierDashboardPage() {
           loading={isLoading}
         />
       </div>
-      <Card className="mt-4">
-        <p className="text-sm font-semibold">Checklist de ativação</p>
-        <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            'Dados da empresa preenchidos',
-            'Logo cadastrada',
-            'Endereço de origem cadastrado',
-            'Primeiro produto cadastrado',
-            'Políticas cadastradas',
-            'Conta aprovada pelo administrador',
-          ].map((item) => (
-            <div
-              key={item}
-              className="rounded-xl border border-border bg-surface-2/60 px-3 py-2 text-muted"
-            >
-              {item}
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }

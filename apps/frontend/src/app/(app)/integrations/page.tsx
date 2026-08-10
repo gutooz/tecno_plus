@@ -50,6 +50,11 @@ interface ShopeeConfig {
   missing: string[];
 }
 
+interface ShopeeOrderSummary {
+  order_sn?: string;
+  booking_sn?: string;
+}
+
 export default function IntegrationsPage() {
   return (
     <Suspense>
@@ -63,7 +68,7 @@ function IntegrationsContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [orders, setOrders] = useState<unknown[] | null>(null);
+  const [orders, setOrders] = useState<ShopeeOrderSummary[] | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['integrations'],
@@ -128,7 +133,7 @@ function IntegrationsContent() {
   });
 
   const loadOrders = useMutation({
-    mutationFn: () => api.get<{ orders: unknown[] }>('/integrations/shopee/orders'),
+    mutationFn: () => api.get<{ orders: ShopeeOrderSummary[] }>('/integrations/shopee/orders'),
     onSuccess: (res) => setOrders(res.orders),
     onError: (err) =>
       setBanner({ type: 'error', text: err instanceof Error ? err.message : String(err) }),
@@ -320,13 +325,21 @@ function IntegrationsContent() {
                 Nenhum pedido recente. A chamada a API funcionou.
               </p>
             ) : (
-              <ul className="space-y-1.5 text-sm">
+              <ul className="space-y-2 text-sm">
                 {orders.map((order, index) => (
                   <li
-                    key={index}
-                    className="rounded-lg bg-surface-2/60 px-3 py-1.5 font-mono text-xs"
+                    key={order.order_sn ?? index}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2"
                   >
-                    {JSON.stringify(order)}
+                    <span>
+                      <span className="font-medium text-fg">Pedido {index + 1}</span>
+                      <span className="ml-2 font-mono text-xs text-muted">
+                        {order.order_sn ?? 'sem codigo'}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted">
+                      Booking: {order.booking_sn || 'nao informado'}
+                    </span>
                   </li>
                 ))}
               </ul>
