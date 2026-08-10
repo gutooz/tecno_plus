@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Send, ShoppingBag } from 'lucide-react';
+import { CheckCircle2, Send, ShoppingBag } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, Skeleton, StatusPill } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
@@ -17,6 +18,7 @@ interface Listing {
 
 export default function SellerListingsPage() {
   const qc = useQueryClient();
+  const [publishedItemId, setPublishedItemId] = useState<string | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['seller-listings'],
     queryFn: () => api.get<Listing[]>('/dropshipping/seller/listings'),
@@ -24,8 +26,14 @@ export default function SellerListingsPage() {
   });
 
   const publish = useMutation({
-    mutationFn: (id: string) => api.post(`/dropshipping/seller/listings/${id}/request-publication`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['seller-listings'] }),
+    mutationFn: (id: string) =>
+      api.post<{ externalItemId?: string }>(
+        `/dropshipping/seller/listings/${id}/request-publication`,
+      ),
+    onSuccess: (res) => {
+      setPublishedItemId(res.externalItemId ?? null);
+      qc.invalidateQueries({ queryKey: ['seller-listings'] });
+    },
     onError: (err) => alert(err instanceof Error ? err.message : String(err)),
   });
 
@@ -35,6 +43,12 @@ export default function SellerListingsPage() {
         title="Meus produtos"
         subtitle="Produtos importados e preparados para publicação"
       />
+      {publishedItemId && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-success/10 px-3.5 py-2.5 text-sm text-success">
+          <CheckCircle2 size={15} className="shrink-0" />
+          Publicado na Shopee. Item ID {publishedItemId}.
+        </div>
+      )}
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

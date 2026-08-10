@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
-import { DropshippingController } from './dropshipping.controller';
+import { AgentsModule } from '../../agents/agents.module';
+import { AsaasWebhookController, DropshippingController } from './dropshipping.controller';
 import { DropshippingService } from './dropshipping.service';
 import { ShopeeProvider } from './marketplaces/shopee.provider';
 
 @Module({
-  controllers: [DropshippingController],
+  imports: [AgentsModule],
+  controllers: [DropshippingController, AsaasWebhookController],
   providers: [DropshippingService, ShopeeProvider],
   exports: [DropshippingService],
 })

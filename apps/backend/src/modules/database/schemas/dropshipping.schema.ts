@@ -528,6 +528,21 @@ export class FinancialEntry {
   @Prop({ default: '' })
   proofUrl!: string;
 
+  @Prop({ default: '', index: true })
+  gatewayPaymentId!: string;
+
+  @Prop({ default: '' })
+  gatewayCustomerId!: string;
+
+  @Prop({ default: '' })
+  gateway!: string;
+
+  @Prop({ type: Object, default: {} })
+  pix!: Record<string, unknown>;
+
+  @Prop({ type: Object, default: {} })
+  metadata!: Record<string, unknown>;
+
   @Prop({ default: '' })
   notes!: string;
 }

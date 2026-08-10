@@ -12,6 +12,8 @@ import { StorageService } from '../storage/storage.service';
 import {
   AuditLog,
   AuditLogDocument,
+  Address,
+  AddressDocument,
   FinancialEntry,
   FinancialEntryDocument,
   IntegrationLog,
@@ -22,6 +24,8 @@ import {
   MarketplaceOrderDocument,
   Notification,
   NotificationDocument,
+  OrderDocumentFile,
+  OrderDocumentFileDocument,
   Organization,
   OrganizationDocument,
   ProductListing,
@@ -44,6 +48,23 @@ import { ShopeeProvider } from './marketplaces/shopee.provider';
 
 type AnyRecord = Record<string, unknown>;
 
+interface AsaasCustomer {
+  id: string;
+}
+
+interface AsaasPayment {
+  id: string;
+  status?: string;
+  invoiceUrl?: string;
+  bankSlipUrl?: string;
+}
+
+interface AsaasPixQrCode {
+  encodedImage?: string;
+  payload?: string;
+  expirationDate?: string;
+}
+
 function pageLimit(page?: number, limit?: number) {
   const safePage = Math.max(1, page ?? 1);
   const safeLimit = Math.min(100, Math.max(1, limit ?? 20));
@@ -55,6 +76,123 @@ function numberFrom(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function moneyAmount(value: unknown): number {
+  return Math.round(numberFrom(value) * 100) / 100;
+}
+
+function dateOnly(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function objectFrom(value: unknown): AnyRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as AnyRecord) : {};
+}
+
+function hasText(value: unknown): boolean {
+  return typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
+}
+
+function hasAnyText(record: AnyRecord, keys: string[]): boolean {
+  return keys.some((key) => hasText(record[key]));
+}
+
+function hasOriginAddress(record: AnyRecord): boolean {
+  return (
+    hasAnyText(record, ['cep', 'zip', 'postalCode']) &&
+    hasAnyText(record, ['street', 'address', 'logradouro']) &&
+    hasAnyText(record, ['city', 'cidade']) &&
+    hasAnyText(record, ['state', 'uf'])
+  );
+}
+
+const ORDER_DOCUMENT_TYPES = new Set([
+  'invoice',
+  'content_declaration',
+  'shipping_label',
+  'transport',
+  'receipt',
+  'other',
+]);
+
+function firstText(record: AnyRecord, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+}
+
+function normalizeOrderDocument(input: AnyRecord, fallbackName: string) {
+  const url = firstText(input, ['url', 'href', 'link', 'fileUrl', 'downloadUrl']);
+  if (!url) return null;
+  const rawType = firstText(input, ['type', 'kind', 'documentType']);
+  const type = ORDER_DOCUMENT_TYPES.has(rawType) ? rawType : 'other';
+  return {
+    type,
+    name: firstText(input, ['name', 'title', 'label']) || fallbackName,
+    url,
+    status: firstText(input, ['status']) || 'available',
+  };
+}
+
+function orderDocumentsFromPayload(body: AnyRecord) {
+  const docs: { type: string; name: string; url: string; status: string }[] = [];
+  const rawDocs = [
+    ...(Array.isArray(body.documents) ? (body.documents as AnyRecord[]) : []),
+    ...(Array.isArray(body.orderDocuments) ? (body.orderDocuments as AnyRecord[]) : []),
+  ];
+  for (const doc of rawDocs) {
+    const normalized = normalizeOrderDocument(doc, 'Documento da plataforma');
+    if (normalized) docs.push(normalized);
+  }
+
+  const directFields = [
+    { key: 'invoiceUrl', type: 'invoice', name: 'Nota fiscal da plataforma' },
+    { key: 'fiscalNoteUrl', type: 'invoice', name: 'Nota fiscal da plataforma' },
+    { key: 'nfeUrl', type: 'invoice', name: 'NF-e da plataforma' },
+    { key: 'danfeUrl', type: 'invoice', name: 'DANFE da plataforma' },
+    { key: 'platformInvoiceUrl', type: 'invoice', name: 'Nota da plataforma' },
+    { key: 'shippingLabelUrl', type: 'shipping_label', name: 'Etiqueta da plataforma' },
+    { key: 'declarationUrl', type: 'content_declaration', name: 'Declaração de conteúdo' },
+  ];
+  for (const field of directFields) {
+    const url = firstText(body, [field.key]);
+    if (url) docs.push({ type: field.type, name: field.name, url, status: 'available' });
+  }
+
+  const seen = new Set<string>();
+  return docs.filter((doc) => {
+    if (seen.has(doc.url)) return false;
+    seen.add(doc.url);
+    return true;
+  });
+}
+
+function marketplaceOrderDetails(order: AnyRecord | undefined) {
+  const raw = objectFrom(order?.rawPayload);
+  return {
+    platformNote: firstText(raw, [
+      'platformNote',
+      'orderNote',
+      'buyerNote',
+      'sellerNote',
+      'note',
+      'remark',
+      'message',
+      'observations',
+    ]),
+    fiscalNumber: firstText(raw, [
+      'invoiceNumber',
+      'fiscalNoteNumber',
+      'nfeNumber',
+      'notaFiscal',
+      'danfeNumber',
+      'platformInvoiceNumber',
+    ]),
+  };
+}
+
 @Injectable()
 export class DropshippingService {
   constructor(
@@ -63,6 +201,7 @@ export class DropshippingService {
     @InjectModel(SupplierProfile.name)
     private readonly supplierProfiles: Model<SupplierProfileDocument>,
     @InjectModel(SellerProfile.name) private readonly sellerProfiles: Model<SellerProfileDocument>,
+    @InjectModel(Address.name) private readonly addresses: Model<AddressDocument>,
     @InjectModel(SupplierProduct.name)
     private readonly supplierProducts: Model<SupplierProductDocument>,
     @InjectModel(ProductListing.name) private readonly listings: Model<ProductListingDocument>,
@@ -71,6 +210,8 @@ export class DropshippingService {
     @InjectModel(MarketplaceOrder.name)
     private readonly marketplaceOrders: Model<MarketplaceOrderDocument>,
     @InjectModel(SupplierOrder.name) private readonly supplierOrders: Model<SupplierOrderDocument>,
+    @InjectModel(OrderDocumentFile.name)
+    private readonly orderDocuments: Model<OrderDocumentFileDocument>,
     @InjectModel(InventoryMovement.name)
     private readonly inventoryMovements: Model<InventoryMovementDocument>,
     @InjectModel(SyncJob.name) private readonly syncJobs: Model<SyncJobDocument>,
@@ -105,7 +246,6 @@ export class DropshippingService {
       logo: Boolean(body.logoUrl),
       originAddress: Boolean(body.cep || ((body.address as AnyRecord | undefined)?.cep ?? false)),
       firstProduct: false,
-      policies: Boolean(body.exchangePolicy && body.returnPolicy),
       adminApproved: false,
     };
 
@@ -200,6 +340,162 @@ export class DropshippingService {
       return acc;
     }, {});
     return { products, lowStock, orders: orderCounts, financial };
+  }
+
+  async supplierSettings(user: AuthUser) {
+    this.requireRole(user, ['supplier', 'admin']);
+    const org = await this.ensureOrganization(user, 'supplier', 'Fornecedor');
+    const profile = await this.supplierProfiles
+      .findOneAndUpdate(
+        { userId: user.id },
+        {
+          $setOnInsert: {
+            userId: user.id,
+            organizationId: String(org._id),
+            personal: { email: user.email },
+            company: {},
+            policies: {},
+            activationChecklist: {},
+          },
+        },
+        { upsert: true, new: true },
+      )
+      .lean();
+
+    const [originAddress, sellableProducts] = await Promise.all([
+      this.addresses
+        .findOne({ ownerUserId: user.id, organizationId: String(org._id), type: 'origin' })
+        .lean(),
+      this.supplierProducts.countDocuments({
+        supplierUserId: user.id,
+        status: 'active',
+        allowSellers: true,
+        stock: { $gt: 0 },
+      }),
+    ]);
+    const activation = this.supplierActivation(profile, originAddress?.data, sellableProducts);
+    await this.supplierProfiles.updateOne(
+      { userId: user.id },
+      { $set: { activationChecklist: activation.checklist } },
+    );
+
+    return {
+      profile: {
+        personal: profile.personal ?? {},
+        company: profile.company ?? {},
+        policies: profile.policies ?? {},
+        approvalStatus: profile.approvalStatus,
+      },
+      originAddress: originAddress?.data ?? {},
+      activation,
+    };
+  }
+
+  async updateSupplierSettings(user: AuthUser, body: AnyRecord) {
+    this.requireRole(user, ['supplier', 'admin']);
+    const org = await this.ensureOrganization(user, 'supplier', 'Fornecedor');
+    const current = await this.supplierProfiles.findOne({ userId: user.id }).lean();
+    const personal = { ...objectFrom(current?.personal), ...objectFrom(body.personal) };
+    const company = { ...objectFrom(current?.company), ...objectFrom(body.company) };
+    const policies = { ...objectFrom(current?.policies), ...objectFrom(body.policies) };
+
+    if (hasText(company.storeName)) {
+      await this.organizations.updateOne(
+        { _id: org._id },
+        { $set: { name: String(company.storeName) } },
+      );
+    }
+
+    await this.supplierProfiles.findOneAndUpdate(
+      { userId: user.id },
+      {
+        $set: {
+          organizationId: String(org._id),
+          personal,
+          company,
+          policies,
+        },
+        $setOnInsert: { userId: user.id, activationChecklist: {} },
+      },
+      { upsert: true, new: true },
+    );
+
+    const originAddress = objectFrom(body.originAddress);
+    if (Object.keys(originAddress).length) {
+      await this.addresses.findOneAndUpdate(
+        { ownerUserId: user.id, organizationId: String(org._id), type: 'origin' },
+        {
+          $set: {
+            ownerUserId: user.id,
+            organizationId: String(org._id),
+            type: 'origin',
+            data: originAddress,
+          },
+        },
+        { upsert: true, new: true },
+      );
+    }
+
+    await this.audit(user.id, 'supplier.settings.update', 'supplier_profile', user.id);
+    return this.supplierSettings(user);
+  }
+
+  async uploadSupplierLogo(user: AuthUser, file: { buffer?: Buffer; mimeType: string }) {
+    this.requireRole(user, ['supplier', 'admin']);
+    if (!file?.buffer || !file.mimeType.startsWith('image/')) {
+      throw new BadRequestException('Envie uma imagem valida para a logo.');
+    }
+    const org = await this.ensureOrganization(user, 'supplier', 'Fornecedor');
+    const ext = (file.mimeType.split('/')[1] ?? 'jpg').split('+')[0];
+    const path = `supplier-logos/${user.id}/logo.${ext}`;
+    const logoUrl = await this.storage.upload(path, file.buffer, file.mimeType);
+
+    await this.supplierProfiles.findOneAndUpdate(
+      { userId: user.id },
+      {
+        $set: {
+          organizationId: String(org._id),
+          'company.logoUrl': logoUrl,
+        },
+        $setOnInsert: {
+          userId: user.id,
+          personal: { email: user.email },
+          policies: {},
+          activationChecklist: {},
+        },
+      },
+      { upsert: true, new: true },
+    );
+    await this.audit(user.id, 'supplier.logo.upload', 'supplier_profile', user.id);
+    return this.supplierSettings(user);
+  }
+
+  async lookupCep(user: AuthUser, cep: string) {
+    this.requireRole(user, ['supplier', 'seller', 'admin']);
+    const digits = String(cep ?? '').replace(/\D/g, '');
+    if (digits.length !== 8) throw new BadRequestException('CEP deve ter 8 digitos.');
+
+    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+    if (!res.ok) throw new BadRequestException('Nao foi possivel consultar este CEP.');
+    const data = (await res.json()) as {
+      erro?: boolean;
+      cep?: string;
+      logradouro?: string;
+      bairro?: string;
+      localidade?: string;
+      uf?: string;
+      complemento?: string;
+    };
+    if (data.erro) throw new BadRequestException('CEP nao encontrado.');
+
+    return {
+      cep: data.cep ?? digits,
+      street: data.logradouro ?? '',
+      neighborhood: data.bairro ?? '',
+      city: data.localidade ?? '',
+      state: data.uf ?? '',
+      complement: data.complemento ?? '',
+    };
   }
 
   async listSupplierProducts(
@@ -456,13 +752,54 @@ export class DropshippingService {
   ) {
     this.requireRole(user, ['seller', 'admin']);
     const { page, limit, skip } = pageLimit(q.page, q.limit);
+    const approvedProfiles = await this.supplierProfiles
+      .find({ approvalStatus: 'approved' }, { userId: 1, company: 1 })
+      .lean();
+    const supplierIdsWithData = approvedProfiles
+      .filter((profile) => {
+        const company = objectFrom(profile.company);
+        return (
+          hasAnyText(company, ['storeName', 'companyName', 'fantasyName', 'legalName', 'name']) &&
+          hasAnyText(company, ['document', 'cnpj', 'cpf']) &&
+          hasAnyText(company, ['logoUrl', 'logo', 'brandLogo'])
+        );
+      })
+      .map((profile) => profile.userId);
+    const originAddresses = await this.addresses
+      .find(
+        { ownerUserId: { $in: supplierIdsWithData }, type: 'origin' },
+        { ownerUserId: 1, data: 1 },
+      )
+      .lean();
+    const supplierIdsWithOrigin = new Set(
+      originAddresses
+        .filter((address) => hasOriginAddress(objectFrom(address.data)))
+        .map((address) => address.ownerUserId),
+    );
+    const eligibleSupplierIds = approvedProfiles
+      .filter((profile) => {
+        const company = objectFrom(profile.company);
+        return (
+          supplierIdsWithData.includes(profile.userId) &&
+          (supplierIdsWithOrigin.has(profile.userId) || hasOriginAddress(company))
+        );
+      })
+      .map((profile) => profile.userId);
+
+    if (q.supplier && !eligibleSupplierIds.includes(q.supplier)) {
+      return { items: [], total: 0, page, limit, pages: 0 };
+    }
+    if (!q.supplier && !eligibleSupplierIds.length) {
+      return { items: [], total: 0, page, limit, pages: 0 };
+    }
+
     const filter: FilterQuery<SupplierProductDocument> = {
       status: 'active',
       allowSellers: true,
       stock: { $gt: 0 },
+      supplierUserId: q.supplier ?? { $in: eligibleSupplierIds },
     };
     if (q.category) filter.category = q.category;
-    if (q.supplier) filter.supplierUserId = q.supplier;
     if (q.search) filter.$text = { $search: q.search };
     const [items, total] = await Promise.all([
       this.supplierProducts
@@ -530,38 +867,91 @@ export class DropshippingService {
   async requestPublication(user: AuthUser, id: string) {
     this.requireRole(user, ['seller', 'admin']);
     const listing = await this.listings.findOne({ _id: id, sellerUserId: user.id });
-    if (!listing) throw new NotFoundException('Anúncio não encontrado');
+    if (!listing) throw new NotFoundException('Anuncio nao encontrado');
+    if (listing.marketplace !== 'shopee') {
+      throw new BadRequestException('Publicacao direta disponivel primeiro para Shopee.');
+    }
+    const supplierProduct = await this.supplierProducts.findById(listing.supplierProductId).lean();
+    if (!supplierProduct) throw new NotFoundException('Produto fornecedor nao encontrado');
+
     const data = listing.listingData as AnyRecord;
     const pricing = listing.pricing as AnyRecord;
-    const errors = await this.shopee.validatePublication({
+    const draft = {
       listingId: id,
+      sellerUserId: user.id,
+      supplierProductId: listing.supplierProductId,
       title: String(data.title ?? ''),
       description: String(data.description ?? ''),
       categoryId: String(data.categoryId ?? ''),
       images: Array.isArray(data.images) ? (data.images as string[]) : [],
       price: numberFrom(pricing.finalPrice),
       stock: numberFrom(data.stockToPublish),
+      sellerSku: String(data.sellerSku ?? supplierProduct.supplierSku ?? ''),
+      weight: supplierProduct.weight,
+      dimensions: supplierProduct.dimensions,
       variants: listing.variants,
-    });
+    };
+    const errors = await this.shopee.validatePublication(draft);
     if (errors.length) throw new BadRequestException(errors);
 
-    listing.status = 'pending_publication';
+    listing.status = 'publishing';
+    listing.lastError = '';
     await listing.save();
-    await this.syncJobs.findOneAndUpdate(
-      { idempotencyKey: `publication:${id}` },
-      {
-        $setOnInsert: {
-          idempotencyKey: `publication:${id}`,
-          marketplace: listing.marketplace,
-          type: 'publication',
-          ownerUserId: user.id,
-          payload: { listingId: id },
+
+    try {
+      const result = await this.shopee.publishProduct(draft);
+      listing.status = result.warnings?.length ? 'published_with_warning' : 'published';
+      listing.externalItemId = result.externalItemId;
+      listing.connectedStoreId = result.externalStoreId ?? '';
+      listing.lastError = '';
+      await listing.save();
+
+      await this.mappings.findOneAndUpdate(
+        { idempotencyKey: `listing:${id}:shopee:${result.externalItemId}` },
+        {
+          $setOnInsert: {
+            idempotencyKey: `listing:${id}:shopee:${result.externalItemId}`,
+            listingId: id,
+            supplierProductId: listing.supplierProductId,
+            supplierUserId: listing.supplierUserId,
+            sellerUserId: user.id,
+            marketplace: 'shopee',
+            externalItemId: result.externalItemId,
+            externalVariationId: '',
+            internalVariationSku: String(data.sellerSku ?? supplierProduct.supplierSku ?? ''),
+          },
         },
-      },
-      { upsert: true, new: true },
-    );
-    await this.audit(user.id, 'listing.publication_requested', 'marketplace_listing', id);
-    return { queued: true, status: listing.status };
+        { upsert: true, new: true },
+      );
+      await this.sellerProfiles.updateOne(
+        { userId: user.id },
+        { $set: { 'activationChecklist.firstListingPublished': true } },
+      );
+      await this.integrationLogs.create({
+        marketplace: 'shopee',
+        ownerUserId: user.id,
+        action: 'listing.publish',
+        level: 'info',
+        message: 'Anuncio publicado na Shopee.',
+        context: { listingId: id, itemId: result.externalItemId },
+      });
+      await this.audit(user.id, 'listing.published', 'marketplace_listing', id);
+      return { queued: false, status: listing.status, externalItemId: result.externalItemId };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Falha ao publicar na Shopee';
+      listing.status = 'rejected';
+      listing.lastError = message;
+      await listing.save();
+      await this.integrationLogs.create({
+        marketplace: 'shopee',
+        ownerUserId: user.id,
+        action: 'listing.publish_failed',
+        level: 'error',
+        message,
+        context: { listingId: id },
+      });
+      throw new BadRequestException(message);
+    }
   }
 
   async importMarketplaceOrder(user: AuthUser, body: AnyRecord) {
@@ -616,6 +1006,17 @@ export class DropshippingService {
       exceptionReason: missing.length ? `Itens sem vínculo: ${missing.join(', ')}` : '',
     });
 
+    const platformDocuments = orderDocumentsFromPayload(body);
+    if (platformDocuments.length) {
+      await this.orderDocuments.insertMany(
+        platformDocuments.map((doc) => ({
+          orderId: String(marketplaceOrder._id),
+          ownerUserId: user.id,
+          ...doc,
+        })),
+      );
+    }
+
     if (missing.length) {
       await this.notifyAdmins(
         'Pedido sem vínculo',
@@ -652,6 +1053,15 @@ export class DropshippingService {
         deadlines: body.deadlines ?? {},
       });
       supplierOrders.push(supplierOrder.toObject());
+      if (platformDocuments.length) {
+        await this.orderDocuments.insertMany(
+          platformDocuments.map((doc) => ({
+            orderId: String(supplierOrder._id),
+            ownerUserId: supplierUserId,
+            ...doc,
+          })),
+        );
+      }
       await this.notifications.create({
         userId: supplierUserId,
         title: 'Novo pedido',
@@ -663,8 +1073,14 @@ export class DropshippingService {
         supplierOrderId: String(supplierOrder._id),
         supplierUserId,
         sellerUserId: user.id,
-        amounts: supplierOrder.totals,
+        amounts: this.sellerChargeAmounts(supplierOrder.totals),
         status: 'pending',
+        gateway: 'asaas',
+        metadata: {
+          marketplace,
+          externalOrderId,
+          marketplaceOrderId: String(marketplaceOrder._id),
+        },
       });
       for (const item of groupedItems) {
         await this.reserveStock(
@@ -685,14 +1101,191 @@ export class DropshippingService {
     return { marketplaceOrder: marketplaceOrder.toObject(), supplierOrders };
   }
 
-  async supplierOrdersList(user: AuthUser) {
+  async supplierOrdersList(user: AuthUser): Promise<AnyRecord[]> {
     this.requireRole(user, ['supplier', 'admin']);
-    return this.supplierOrders.find({ supplierUserId: user.id }).sort({ createdAt: -1 }).lean();
+    const orders = await this.supplierOrders
+      .find({ supplierUserId: user.id })
+      .sort({ createdAt: -1 })
+      .lean();
+    const marketplaceOrderIds = orders.map((order) => order.marketplaceOrderId).filter(Boolean);
+    const supplierOrderIds = orders.map((order) => String(order._id));
+    const sellerIds = [...new Set(orders.map((order) => order.sellerUserId).filter(Boolean))];
+
+    const [marketplaceOrders, sellers, documents] = await Promise.all([
+      this.marketplaceOrders.find({ _id: { $in: marketplaceOrderIds } }).lean(),
+      this.users
+        .find({ _id: { $in: sellerIds } }, { passwordHash: 0, refreshTokenHashes: 0 })
+        .lean(),
+      this.orderDocuments
+        .find({ orderId: { $in: [...supplierOrderIds, ...marketplaceOrderIds] } })
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    const marketplaceById = new Map(
+      marketplaceOrders.map((order) => [String(order._id), order as AnyRecord]),
+    );
+    const sellerById = new Map(sellers.map((seller) => [String(seller._id), seller]));
+    const documentsByOrderId = documents.reduce<Record<string, typeof documents>>((acc, doc) => {
+      acc[doc.orderId] = [...(acc[doc.orderId] ?? []), doc];
+      return acc;
+    }, {});
+
+    return orders.map((order) => {
+      const marketplaceOrder = marketplaceById.get(order.marketplaceOrderId);
+      const seller = sellerById.get(order.sellerUserId);
+      const details = marketplaceOrderDetails(marketplaceOrder);
+      return {
+        ...order,
+        seller: seller
+          ? {
+              id: String(seller._id),
+              name: seller.name,
+              email: seller.email,
+            }
+          : null,
+        marketplace: marketplaceOrder
+          ? {
+              id: String(marketplaceOrder._id),
+              name: String(marketplaceOrder.marketplace ?? ''),
+              externalStoreId: String(marketplaceOrder.externalStoreId ?? ''),
+              status: String(marketplaceOrder.status ?? ''),
+              platformNote: details.platformNote,
+              fiscalNumber: details.fiscalNumber,
+            }
+          : null,
+        documents: [
+          ...(documentsByOrderId[String(order._id)] ?? []),
+          ...(documentsByOrderId[order.marketplaceOrderId] ?? []),
+        ]
+          .filter((doc, index, all) => all.findIndex((item) => item.url === doc.url) === index)
+          .map((doc) => ({
+            id: String(doc._id),
+            type: doc.type,
+            name: doc.name,
+            url: doc.url,
+            status: doc.status,
+          })),
+      };
+    });
   }
 
   async sellerOrdersList(user: AuthUser) {
     this.requireRole(user, ['seller', 'admin']);
     return this.marketplaceOrders.find({ sellerUserId: user.id }).sort({ createdAt: -1 }).lean();
+  }
+
+  async sellerFinance(user: AuthUser): Promise<AnyRecord> {
+    this.requireRole(user, ['seller', 'admin']);
+    const entries = await this.financialEntries
+      .find({ sellerUserId: user.id })
+      .sort({ createdAt: -1 })
+      .lean();
+    return this.formatSellerFinanceEntries(entries);
+  }
+
+  async createSellerFinancePix(user: AuthUser, entryId: string): Promise<AnyRecord> {
+    this.requireRole(user, ['seller', 'admin']);
+    const entry = await this.financialEntries.findOne({ _id: entryId, sellerUserId: user.id });
+    if (!entry) throw new NotFoundException('Lançamento financeiro não encontrado');
+    if (entry.status === 'paid') {
+      return this.formatSellerFinanceEntries([entry.toObject() as unknown as AnyRecord]);
+    }
+
+    const amounts = this.sellerChargeAmounts(entry.amounts);
+    entry.amounts = amounts;
+    entry.gateway = 'asaas';
+
+    const pix = objectFrom(entry.pix);
+    if (entry.gatewayPaymentId && hasText(pix.payload)) {
+      await entry.save();
+      return this.formatSellerFinanceEntries([entry.toObject() as unknown as AnyRecord]);
+    }
+
+    const externalReference = `financial:${String(entry._id)}`;
+    if (!this.config.get<string>('asaas.apiKey')) {
+      entry.gatewayPaymentId = `mock_${String(entry._id)}`;
+      entry.gatewayCustomerId = 'mock_customer';
+      entry.pix = {
+        encodedImage: '',
+        payload: `PIX-SIMULADO-${String(entry._id)}-${amounts.sellerChargeAmount}`,
+        expirationDate: dateOnly(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+        invoiceUrl: '',
+        mode: 'mock',
+      };
+      entry.status = 'awaiting_confirmation';
+      entry.metadata = { ...objectFrom(entry.metadata), externalReference };
+      await entry.save();
+      return this.formatSellerFinanceEntries([entry.toObject() as unknown as AnyRecord]);
+    }
+
+    const seller = await this.users
+      .findById(user.id, { passwordHash: 0, refreshTokenHashes: 0 })
+      .lean();
+    const sellerProfile = await this.sellerProfiles.findOne({ userId: user.id }).lean();
+    const customerId = await this.ensureAsaasCustomer(user, seller, sellerProfile);
+    const payment = await this.asaasRequest<AsaasPayment>('/payments', {
+      method: 'POST',
+      body: {
+        customer: customerId,
+        billingType: 'PIX',
+        value: amounts.sellerChargeAmount,
+        dueDate: dateOnly(),
+        description: `Pagamento do pedido ${String(objectFrom(entry.metadata).externalOrderId ?? entry.supplierOrderId)} - fornecedor + taxa Tecno Plus`,
+        externalReference,
+      },
+    });
+    const pixQrCode = await this.asaasRequest<AsaasPixQrCode>(
+      `/payments/${encodeURIComponent(payment.id)}/pixQrCode`,
+    );
+
+    entry.gatewayPaymentId = payment.id;
+    entry.gatewayCustomerId = customerId;
+    entry.proofUrl = payment.invoiceUrl ?? payment.bankSlipUrl ?? '';
+    entry.pix = {
+      ...pixQrCode,
+      invoiceUrl: payment.invoiceUrl ?? payment.bankSlipUrl ?? '',
+    };
+    entry.status = 'awaiting_confirmation';
+    entry.metadata = {
+      ...objectFrom(entry.metadata),
+      externalReference,
+      asaasStatus: payment.status ?? '',
+    };
+    await entry.save();
+    return this.formatSellerFinanceEntries([entry.toObject() as unknown as AnyRecord]);
+  }
+
+  async asaasWebhook(body: AnyRecord) {
+    const payment = objectFrom(body.payment);
+    const paymentId = firstText(payment, ['id']);
+    const externalReference = firstText(payment, ['externalReference']);
+    const status = this.statusFromAsaas(
+      firstText(payment, ['status']) || firstText(body, ['event']),
+    );
+    const filter = paymentId
+      ? { gatewayPaymentId: paymentId }
+      : externalReference
+        ? { 'metadata.externalReference': externalReference }
+        : null;
+    if (!filter) return { ok: true, ignored: true };
+
+    const set: AnyRecord = {
+      status,
+      metadata: {
+        event: body.event,
+        asaasStatus: payment.status,
+        externalReference,
+      },
+    };
+    if (status === 'paid') set.paidAt = new Date();
+    const update: AnyRecord = {
+      $set: {
+        ...set,
+      },
+    };
+    await this.financialEntries.updateOne(filter, update);
+    return { ok: true };
   }
 
   async adminDashboard(user: AuthUser) {
@@ -730,6 +1323,211 @@ export class DropshippingService {
   private requireRole(user: AuthUser, allowed: string[]) {
     if (!allowed.includes(user.role))
       throw new ForbiddenException('Perfil sem permissão para esta área.');
+  }
+
+  private supplierActivation(
+    profile: Pick<SupplierProfile, 'company' | 'approvalStatus'> | null,
+    originAddress: unknown,
+    sellableProducts: number,
+  ) {
+    const company = objectFrom(profile?.company);
+    const origin = objectFrom(originAddress);
+    const companyData =
+      hasAnyText(company, ['storeName', 'companyName', 'fantasyName', 'legalName', 'name']) &&
+      hasAnyText(company, ['document', 'cnpj', 'cpf']);
+    const checklist = {
+      companyData,
+      logo: hasAnyText(company, ['logoUrl', 'logo', 'brandLogo']),
+      originAddress: hasOriginAddress(origin) || hasOriginAddress(company),
+      firstProduct: sellableProducts > 0,
+      adminApproved: profile?.approvalStatus === 'approved',
+    };
+    const items = [
+      {
+        key: 'companyData',
+        label: 'Dados da empresa preenchidos',
+        action: 'Informe nome da loja e CNPJ/CPF.',
+        done: checklist.companyData,
+      },
+      {
+        key: 'logo',
+        label: 'Logo cadastrada',
+        action: 'Adicione a URL da logo da marca.',
+        done: checklist.logo,
+      },
+      {
+        key: 'originAddress',
+        label: 'Endereço de origem cadastrado',
+        action: 'Preencha CEP, rua, cidade e UF.',
+        done: checklist.originAddress,
+      },
+      {
+        key: 'firstProduct',
+        label: 'Produto ativo com estoque',
+        action: 'Cadastre um produto ativo, liberado para vendedores e com estoque.',
+        done: checklist.firstProduct,
+      },
+      {
+        key: 'adminApproved',
+        label: 'Conta aprovada pelo administrador',
+        action: 'Aguarde aprovação do administrador.',
+        done: checklist.adminApproved,
+      },
+    ];
+    const completed = items.filter((item) => item.done).length;
+    return {
+      checklist,
+      items,
+      completed,
+      total: items.length,
+      isCatalogVisible: completed === items.length,
+      sellableProducts,
+    };
+  }
+
+  private sellerChargeAmounts(amounts: unknown) {
+    const current = objectFrom(amounts);
+    const supplierAmount = moneyAmount(current.supplierAmount);
+    const saleAmount = moneyAmount(current.saleAmount);
+    const platformFee = moneyAmount(
+      current.platformFee ?? this.config.get<number>('asaas.platformFee') ?? 3,
+    );
+    return {
+      ...current,
+      saleAmount,
+      supplierAmount,
+      platformFee,
+      sellerChargeAmount: moneyAmount(current.sellerChargeAmount ?? supplierAmount + platformFee),
+    };
+  }
+
+  private async formatSellerFinanceEntries(entries: AnyRecord[]): Promise<AnyRecord> {
+    const supplierOrderIds = entries.map((entry) => String(entry.supplierOrderId)).filter(Boolean);
+    const supplierUserIds = [
+      ...new Set(entries.map((entry) => String(entry.supplierUserId)).filter(Boolean)),
+    ];
+    const [orders, suppliers] = await Promise.all([
+      this.supplierOrders.find({ _id: { $in: supplierOrderIds } }).lean(),
+      this.users
+        .find({ _id: { $in: supplierUserIds } }, { passwordHash: 0, refreshTokenHashes: 0 })
+        .lean(),
+    ]);
+    const orderById = new Map(orders.map((order) => [String(order._id), order]));
+    const supplierById = new Map(suppliers.map((supplier) => [String(supplier._id), supplier]));
+    const items = entries.map((entry) => {
+      const amounts = this.sellerChargeAmounts(entry.amounts);
+      const order = orderById.get(String(entry.supplierOrderId));
+      const supplier = supplierById.get(String(entry.supplierUserId));
+      return {
+        id: String(entry._id),
+        supplierOrderId: String(entry.supplierOrderId),
+        externalOrderId: order?.externalOrderId ?? objectFrom(entry.metadata).externalOrderId ?? '',
+        status: entry.status,
+        amounts,
+        supplier: supplier
+          ? { id: String(supplier._id), name: supplier.name, email: supplier.email }
+          : null,
+        gateway: entry.gateway,
+        gatewayPaymentId: entry.gatewayPaymentId,
+        proofUrl: entry.proofUrl,
+        pix: entry.pix ?? {},
+        metadata: entry.metadata ?? {},
+        createdAt: entry.createdAt,
+        paidAt: entry.paidAt,
+      };
+    });
+    const totals = items.reduce(
+      (acc, item) => {
+        acc.pending += item.status === 'paid' ? 0 : numberFrom(item.amounts.sellerChargeAmount);
+        acc.paid += item.status === 'paid' ? numberFrom(item.amounts.sellerChargeAmount) : 0;
+        acc.platformFees += numberFrom(item.amounts.platformFee);
+        acc.supplierCosts += numberFrom(item.amounts.supplierAmount);
+        return acc;
+      },
+      { pending: 0, paid: 0, platformFees: 0, supplierCosts: 0 },
+    );
+    return { items, totals };
+  }
+
+  private async ensureAsaasCustomer(
+    user: AuthUser,
+    account: AnyRecord | null,
+    sellerProfile: AnyRecord | null,
+  ): Promise<string> {
+    const storeProfile = objectFrom(sellerProfile?.storeProfile);
+    const existing = firstText(storeProfile, ['asaasCustomerId']);
+    if (existing) return existing;
+    const cpfCnpj = firstText(storeProfile, ['document', 'cpfCnpj', 'cnpj', 'cpf']).replace(
+      /\D/g,
+      '',
+    );
+    if (!cpfCnpj) {
+      throw new BadRequestException('Informe CNPJ/CPF do vendedor antes de gerar cobrança Asaas.');
+    }
+    const customer = await this.asaasRequest<AsaasCustomer>('/customers', {
+      method: 'POST',
+      body: {
+        name:
+          firstText(storeProfile, ['storeName', 'name']) ||
+          String(account?.name ?? account?.email ?? 'Vendedor'),
+        cpfCnpj,
+        email: String(account?.email ?? user.email),
+        mobilePhone: firstText(storeProfile, ['phone', 'mobilePhone']),
+        externalReference: user.id,
+        notificationDisabled: false,
+      },
+    });
+    await this.sellerProfiles.updateOne(
+      { userId: user.id },
+      { $set: { 'storeProfile.asaasCustomerId': customer.id } },
+    );
+    return customer.id;
+  }
+
+  private async asaasRequest<T>(
+    path: string,
+    options: { method?: string; body?: AnyRecord } = {},
+  ): Promise<T> {
+    const apiKey = this.config.get<string>('asaas.apiKey');
+    if (!apiKey) throw new BadRequestException('ASAAS_API_KEY não configurada.');
+    const baseUrl = (this.config.get<string>('asaas.baseUrl') ?? '').replace(/\/+$/, '');
+    const res = await fetch(`${baseUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'TecnoPlus/1.0',
+        access_token: apiKey,
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new BadRequestException(`Asaas ${res.status}: ${text}`);
+    }
+    return (await res.json()) as T;
+  }
+
+  private statusFromAsaas(status: string): string {
+    if (
+      [
+        'PAYMENT_RECEIVED',
+        'PAYMENT_CONFIRMED',
+        'RECEIVED',
+        'CONFIRMED',
+        'RECEIVED_IN_CASH',
+      ].includes(status)
+    ) {
+      return 'paid';
+    }
+    if (
+      ['PAYMENT_DELETED', 'PAYMENT_REFUNDED', 'PAYMENT_CANCELLED', 'DELETED', 'REFUNDED'].includes(
+        status,
+      )
+    ) {
+      return 'canceled';
+    }
+    if (['OVERDUE'].includes(status)) return 'awaiting_confirmation';
+    return 'awaiting_confirmation';
   }
 
   private calculatePricing(costPrice: number, pricing?: AnyRecord) {
