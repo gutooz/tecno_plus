@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, ClipboardList, Package, Store } from 'lucide-react';
+import { Bell, ClipboardList, Link2, Package, Store } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Card, Skeleton } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
@@ -44,6 +45,20 @@ export default function SellerDashboardPage() {
         />
         <Metric icon={Bell} label="Notificações" value={data?.unread ?? 0} loading={isLoading} />
       </div>
+      <Card className="mt-4 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold">Minha loja Shopee</p>
+          <p className="mt-1 text-sm text-muted">
+            Cadastre a loja vendedora para publicar produtos e acompanhar pedidos.
+          </p>
+        </div>
+        <Link
+          href="/seller/store"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-primary px-3.5 text-sm font-medium text-primary-fg shadow-soft transition-all duration-200 ease-out-soft hover:brightness-[1.06]"
+        >
+          <Link2 size={15} /> Cadastrar Shopee
+        </Link>
+      </Card>
       <Card className="mt-4">
         <p className="text-sm font-semibold">Checklist de ativação</p>
         <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">

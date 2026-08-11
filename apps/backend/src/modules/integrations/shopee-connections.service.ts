@@ -35,16 +35,16 @@ export class ShopeeConnectionsService {
     return this.config.get<string>('security.tokenEncryptionKey') ?? '';
   }
 
-  async createState(ownerId: string): Promise<string> {
+  async createState(ownerId: string, returnTo = '/integrations'): Promise<string> {
     const state = randomBytes(24).toString('hex');
-    await this.states.create({ state, ownerId, createdAt: new Date() });
+    await this.states.create({ state, ownerId, returnTo, createdAt: new Date() });
     return state;
   }
 
   /** Resolve e apaga o state num só passo — cada state só pode ser usado uma vez. */
-  async consumeState(state: string): Promise<string | null> {
+  async consumeState(state: string): Promise<{ ownerId: string; returnTo: string } | null> {
     const doc = await this.states.findOneAndDelete({ state });
-    return doc?.ownerId ?? null;
+    return doc ? { ownerId: doc.ownerId, returnTo: doc.returnTo } : null;
   }
 
   findByOwner(ownerId: string): Promise<ShopeeConnectionDocument | null> {

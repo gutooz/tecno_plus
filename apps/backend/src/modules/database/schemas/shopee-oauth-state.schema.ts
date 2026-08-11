@@ -17,6 +17,9 @@ export class ShopeeOauthState {
   @Prop({ required: true })
   ownerId!: string;
 
+  @Prop({ default: '/integrations' })
+  returnTo!: string;
+
   @Prop({ required: true, expires: 300 })
   createdAt!: Date;
 }

@@ -59,7 +59,7 @@ const SELLER_NAV: NavItem[] = [
   { href: '/seller', label: 'Visão geral', icon: LayoutDashboard },
   { href: '/seller/catalog', label: 'Catálogo', icon: Store },
   { href: '/seller/listings', label: 'Meus produtos', icon: Package },
-  { href: '/integrations', label: 'Minha loja Shopee', icon: Plug },
+  { href: '/seller/store', label: 'Minha loja Shopee', icon: Plug },
   { href: '/seller/orders', label: 'Pedidos', icon: ClipboardList },
   { href: '/seller/finance', label: 'Financeiro', icon: CreditCard },
   { href: '/notifications', label: 'Notificações', icon: Bell },

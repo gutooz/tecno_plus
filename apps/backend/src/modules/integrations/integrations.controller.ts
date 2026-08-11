@@ -77,13 +77,13 @@ export class IntegrationsController {
   @Get('shopee/connect')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  async connectShopee(@CurrentUser() user: AuthUser) {
+  async connectShopee(@CurrentUser() user: AuthUser, @Query('returnTo') returnTo?: string) {
     if (!this.shopeeClient.configured) {
       throw new BadRequestException(
         'Integração Shopee não configurada no servidor (defina SHOPEE_PARTNER_ID/SHOPEE_PARTNER_KEY/SHOPEE_REDIRECT_URL).',
       );
     }
-    const state = await this.connections.createState(user.id);
+    const state = await this.connections.createState(user.id, this.shopeeReturnTo(returnTo));
     return { url: this.shopeeClient.buildAuthorizationUrl(state) };
   }
 
@@ -101,30 +101,31 @@ export class IntegrationsController {
     @Res() res: Response,
   ) {
     const frontendUrl = (this.config.get<string[]>('security.corsOrigin') ?? [])[0] ?? '/';
+    let returnTo = '/integrations';
     try {
-      const ownerId = state ? await this.connections.consumeState(state) : null;
-      if (!ownerId || !code || !shopId)
+      const consumed = state ? await this.connections.consumeState(state) : null;
+      returnTo = this.shopeeReturnTo(consumed?.returnTo);
+      if (!consumed?.ownerId || !code || !shopId)
         throw new Error('Parâmetros de callback inválidos ou state expirado.');
 
       const tokens = await this.shopeeClient.exchangeCodeForToken(code, shopId);
-      await this.connections.saveTokens(ownerId, tokens);
+      await this.connections.saveTokens(consumed.ownerId, tokens);
 
       // Busca o nome da loja pra UI — não bloqueia a conexão se falhar.
       try {
         const info = await this.shopeeClient.getShopInfo(tokens.accessToken, tokens.shopId);
-        if (info.shop_name) await this.connections.saveTokens(ownerId, tokens, info.shop_name);
+        if (info.shop_name)
+          await this.connections.saveTokens(consumed.ownerId, tokens, info.shop_name);
       } catch (e) {
         this.logger.warn(
           `Conectado, mas falhou ao buscar shop_name: ${e instanceof Error ? e.message : e}`,
         );
       }
 
-      res.redirect(`${frontendUrl}/integrations?shopee=connected`);
+      res.redirect(this.frontendRedirect(frontendUrl, returnTo, { shopee: 'connected' }));
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Falha ao conectar Shopee';
-      res.redirect(
-        `${frontendUrl}/integrations?shopee=error&message=${encodeURIComponent(message)}`,
-      );
+      res.redirect(this.frontendRedirect(frontendUrl, returnTo, { shopee: 'error', message }));
     }
   }
 
@@ -283,5 +284,16 @@ export class IntegrationsController {
         .filter(([key]) => allowed.includes(key.toLowerCase()))
         .map(([key, value]) => [key, value]),
     );
+  }
+
+  private shopeeReturnTo(returnTo?: string | null) {
+    if (returnTo?.startsWith('/seller/store')) return '/seller/store';
+    if (returnTo?.startsWith('/seller')) return '/seller';
+    return '/integrations';
+  }
+
+  private frontendRedirect(frontendUrl: string, path: string, params: Record<string, string>) {
+    const base = frontendUrl.replace(/\/+$/, '');
+    return `${base}${path}?${new URLSearchParams(params).toString()}`;
   }
 }
