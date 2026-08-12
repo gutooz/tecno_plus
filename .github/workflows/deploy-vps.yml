@@ -76,6 +76,7 @@ jobs:
           APP_DIR="${VPS_APP_DIR:-/opt/tecno-plus}"
           SSH_CMD="ssh -p $PORT -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=accept-new"
           $SSH_CMD "$VPS_USER@$VPS_HOST" "mkdir -p '$APP_DIR'"
+          $SSH_CMD "$VPS_USER@$VPS_HOST" "test -f '$APP_DIR/.env' && cp '$APP_DIR/.env' /tmp/tecno-plus-env-before-deploy || true"
           rsync -az --delete \
             --exclude '.git' \
             --exclude 'node_modules' \
@@ -93,6 +94,54 @@ jobs:
             -o ConnectTimeout=30 \
             -o StrictHostKeyChecking=accept-new \
             .deploy-env "$VPS_USER@$VPS_HOST:$APP_DIR/.env"
+          $SSH_CMD "$VPS_USER@$VPS_HOST" "python3 - <<'PY'
+          from pathlib import Path
+
+          app_env = Path('$APP_DIR/.env')
+          previous_env = Path('/tmp/tecno-plus-env-before-deploy')
+          preserve_keys = {
+              'SHOPEE_PARTNER_ID',
+              'SHOPEE_PARTNER_KEY',
+              'SHOPEE_ENVIRONMENT',
+              'SHOPEE_REGION',
+              'SHOPEE_API_HOST',
+              'SHOPEE_AUTH_HOST',
+              'SHOPEE_REDIRECT_URL',
+              'SHOPEE_WEBHOOK_URL',
+          }
+
+          def parse_env(path):
+              data = {}
+              if not path.exists():
+                  return data
+              for line in path.read_text().splitlines():
+                  if '=' not in line or line.lstrip().startswith('#'):
+                      continue
+                  key, value = line.split('=', 1)
+                  data[key.strip()] = value
+              return data
+
+          current = parse_env(app_env)
+          previous = parse_env(previous_env)
+          if previous:
+              lines = app_env.read_text().splitlines()
+              seen = set()
+              out = []
+              for line in lines:
+                  if '=' in line and not line.lstrip().startswith('#'):
+                      key = line.split('=', 1)[0].strip()
+                      if key in preserve_keys:
+                          value = current.get(key, '')
+                          if not value and previous.get(key):
+                              line = f'{key}={previous[key]}'
+                          seen.add(key)
+                  out.append(line)
+              for key in preserve_keys - seen:
+                  if previous.get(key):
+                      out.append(f'{key}={previous[key]}')
+              app_env.write_text('\n'.join(out) + '\n')
+          previous_env.unlink(missing_ok=True)
+          PY"
           $SSH_CMD "$VPS_USER@$VPS_HOST" "find '$APP_DIR' -name '*.tsbuildinfo' -not -path '$APP_DIR/node_modules/*' -delete"
 
       - name: Docker compose up
