@@ -108,6 +108,7 @@ jobs:
               'SHOPEE_AUTH_HOST',
               'SHOPEE_REDIRECT_URL',
               'SHOPEE_WEBHOOK_URL',
+              'TOKEN_ENCRYPTION_KEY',
           }
 
           def parse_env(path):
@@ -131,8 +132,7 @@ jobs:
                   if '=' in line and not line.lstrip().startswith('#'):
                       key = line.split('=', 1)[0].strip()
                       if key in preserve_keys:
-                          value = current.get(key, '')
-                          if not value and previous.get(key):
+                          if previous.get(key):
                               line = f'{key}={previous[key]}'
                           seen.add(key)
                   out.append(line)
