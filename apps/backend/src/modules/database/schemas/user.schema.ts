@@ -22,6 +22,12 @@ export class User {
 
   @Prop({ type: [String], default: [] })
   refreshTokenHashes!: string[];
+
+  @Prop({ default: '', index: true })
+  resetPasswordTokenHash!: string;
+
+  @Prop({ type: Date, default: null })
+  resetPasswordExpiresAt!: Date | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

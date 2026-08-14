@@ -83,6 +83,33 @@ No painel da Shopee Open Platform, a Redirect URL precisa ser exatamente:
 https://zycron.online/api/integrations/shopee/callback
 ```
 
+## Email transacional
+
+O cadastro chama o envio de boas-vindas automaticamente depois de criar o
+usuario. O provedor principal recomendado e o Resend; o Outlook fica como
+endereco de resposta e suporte (`EMAIL_REPLY_TO`).
+
+No `PROD_ENV_FILE`, configure:
+
+```env
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=<sua chave re_...>
+RESEND_FROM=Tecno Plus <no-reply@zycron.online>
+EMAIL_REPLY_TO=tecnoplus.comercial@outlook.com
+```
+
+No Resend, verifique o dominio usado no `RESEND_FROM` antes de enviar em
+producao. Para validar a configuracao:
+
+```bash
+npm run email:check -- --env .env.production
+npm run email:check -- --env .env.production --send-to seu-email@dominio.com
+```
+
+Com `EMAIL_PROVIDER=resend`, o backend nao usa o SMTP legado do Outlook. Se
+`RESEND_API_KEY` estiver vazio, os emails nao serao enviados ate a chave ser
+preenchida.
+
 ## Bot do Telegram
 
 O `docker-compose.prod.yml` sobe um serviço `bot` separado (mesma imagem do

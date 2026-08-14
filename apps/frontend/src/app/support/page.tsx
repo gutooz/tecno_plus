@@ -9,9 +9,7 @@ export default function SupportPage() {
         </p>
         <div className="mt-6 rounded-2xl border border-border bg-surface p-5 text-sm text-muted">
           <p className="font-medium text-fg">Canais</p>
-          <p className="mt-2">
-            E-mail de suporte: configure um endereço oficial antes de publicar.
-          </p>
+          <p className="mt-2">E-mail de suporte: tecnoplus.comercial@outlook.com</p>
           <p className="mt-1">Horário de atendimento: dias úteis, em horário comercial.</p>
         </div>
       </div>

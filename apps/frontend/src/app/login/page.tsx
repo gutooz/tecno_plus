@@ -15,7 +15,7 @@ import {
 } from '@/lib/api';
 import { Button, Checkbox, Input } from '@/components/ui';
 
-type Mode = 'login' | 'register';
+type Mode = 'login' | 'register' | 'forgot' | 'reset';
 type ProfileType = 'supplier' | 'seller';
 
 const HIGHLIGHTS = [
@@ -34,8 +34,9 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const resetToken = searchParams.get('resetToken') ?? '';
   const [mode, setMode] = useState<Mode>(
-    searchParams.get('mode') === 'register' ? 'register' : 'login',
+    resetToken ? 'reset' : searchParams.get('mode') === 'register' ? 'register' : 'login',
   );
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -45,6 +46,7 @@ function LoginForm() {
   const [remember, setRemember] = useState(true);
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -54,24 +56,41 @@ function LoginForm() {
     if (getToken()) router.replace('/dashboard');
   }, [router]);
 
+  useEffect(() => {
+    if (resetToken) setMode('reset');
+  }, [resetToken]);
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setTouched({ email: true, password: true });
-    if (!emailValid || !passwordValid) return;
+    setTouched({ email: mode !== 'reset', password: mode !== 'forgot' });
+    if (mode !== 'reset' && !emailValid) return;
+    if (mode !== 'forgot' && !passwordValid) return;
 
     setLoading(true);
     setError('');
+    setSuccess('');
     try {
+      if (mode === 'forgot') {
+        const res = await api.post<{ message: string }>('/auth/forgot-password', { email });
+        setSuccess(res.message);
+        return;
+      }
+
       const res = await api.post<{
         accessToken: string;
         refreshToken: string;
         user: SessionUser;
-      }>(`/auth/${mode}`, {
-        email,
-        name,
-        password,
-        profileType: mode === 'register' ? profileType : undefined,
-      });
+      }>(
+        mode === 'reset' ? '/auth/reset-password' : `/auth/${mode}`,
+        mode === 'reset'
+          ? { token: resetToken, password }
+          : {
+              email,
+              name,
+              password,
+              profileType: mode === 'register' ? profileType : undefined,
+            },
+      );
       setToken(res.accessToken, remember);
       setRefreshToken(res.refreshToken, remember);
       setSessionUser(res.user, remember);
@@ -86,7 +105,22 @@ function LoginForm() {
   function toggleMode() {
     setMode((m) => (m === 'login' ? 'register' : 'login'));
     setError('');
+    setSuccess('');
     setTouched({});
+  }
+
+  function titleForMode() {
+    if (mode === 'register') return 'Crie sua conta';
+    if (mode === 'forgot') return 'Recuperar senha';
+    if (mode === 'reset') return 'Criar nova senha';
+    return 'Bem-vindo de volta';
+  }
+
+  function subtitleForMode() {
+    if (mode === 'register') return 'Comece a catalogar em minutos';
+    if (mode === 'forgot') return 'Receba um link seguro no seu e-mail';
+    if (mode === 'reset') return 'Defina uma senha nova para entrar';
+    return 'Entre para continuar';
   }
 
   return (
@@ -188,12 +222,8 @@ function LoginForm() {
               />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">
-                {mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
-              </h1>
-              <p className="mt-1 text-sm text-muted">
-                {mode === 'login' ? 'Entre para continuar' : 'Comece a catalogar em minutos'}
-              </p>
+              <h1 className="text-xl font-semibold tracking-tight">{titleForMode()}</h1>
+              <p className="mt-1 text-sm text-muted">{subtitleForMode()}</p>
             </div>
           </div>
 
@@ -235,48 +265,52 @@ function LoginForm() {
               </div>
             )}
 
-            <Input
-              id="email"
-              type="email"
-              placeholder="voce@empresa.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-              leadingIcon={<Mail size={16} />}
-              state={touched.email ? (emailValid ? 'success' : 'error') : 'default'}
-              hint={touched.email && !emailValid ? 'Informe um e-mail válido' : undefined}
-              autoComplete="email"
-              required
-              className="h-12"
-            />
-            <Input
-              id="password"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Mínimo 8 caracteres"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-              leadingIcon={<Lock size={16} />}
-              trailingIcon={
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="text-muted transition hover:text-fg"
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              }
-              state={touched.password && !passwordValid ? 'error' : 'default'}
-              hint={
-                touched.password && !passwordValid
-                  ? 'A senha precisa ter ao menos 8 caracteres'
-                  : undefined
-              }
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              required
-              className="h-12"
-            />
+            {mode !== 'reset' && (
+              <Input
+                id="email"
+                type="email"
+                placeholder="voce@empresa.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+                leadingIcon={<Mail size={16} />}
+                state={touched.email ? (emailValid ? 'success' : 'error') : 'default'}
+                hint={touched.email && !emailValid ? 'Informe um e-mail válido' : undefined}
+                autoComplete="email"
+                required
+                className="h-12"
+              />
+            )}
+            {mode !== 'forgot' && (
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Mínimo 8 caracteres"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                leadingIcon={<Lock size={16} />}
+                trailingIcon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="text-muted transition hover:text-fg"
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                }
+                state={touched.password && !passwordValid ? 'error' : 'default'}
+                hint={
+                  touched.password && !passwordValid
+                    ? 'A senha precisa ter ao menos 8 caracteres'
+                    : undefined
+                }
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                required
+                className="h-12"
+              />
+            )}
 
             {mode === 'login' && (
               <div className="flex items-center justify-between text-sm">
@@ -286,9 +320,13 @@ function LoginForm() {
                 </label>
                 <button
                   type="button"
-                  disabled
-                  title="Em breve"
-                  className="cursor-not-allowed text-muted/60"
+                  onClick={() => {
+                    setMode('forgot');
+                    setError('');
+                    setSuccess('');
+                    setTouched({});
+                  }}
+                  className="text-primary transition hover:text-primary/80"
                 >
                   Esqueceu sua senha?
                 </button>
@@ -296,6 +334,16 @@ function LoginForm() {
             )}
 
             <AnimatePresence initial={false}>
+              {success && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary"
+                >
+                  {success}
+                </motion.div>
+              )}
               {error && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
@@ -310,17 +358,38 @@ function LoginForm() {
             </AnimatePresence>
 
             <Button type="submit" size="lg" loading={loading} className="mt-1 w-full">
-              {loading ? 'Entrando…' : mode === 'login' ? 'Entrar' : 'Cadastrar'}
+              {loading
+                ? 'Aguarde...'
+                : mode === 'register'
+                  ? 'Cadastrar'
+                  : mode === 'forgot'
+                    ? 'Enviar link'
+                    : mode === 'reset'
+                      ? 'Salvar nova senha'
+                      : 'Entrar'}
             </Button>
           </form>
 
           <button
-            onClick={toggleMode}
+            onClick={() => {
+              if (mode === 'forgot' || mode === 'reset') {
+                setMode('login');
+                setError('');
+                setSuccess('');
+                setTouched({});
+                return;
+              }
+              toggleMode();
+            }}
             className="mt-6 w-full text-center text-sm text-muted transition hover:text-fg"
           >
-            {mode === 'login' ? 'Não tem conta? ' : 'Já tem conta? '}
+            {mode === 'login' ? 'Nao tem conta? ' : mode === 'register' ? 'Ja tem conta? ' : ''}
             <span className="font-medium text-primary">
-              {mode === 'login' ? 'Cadastre-se' : 'Entrar'}
+              {mode === 'login'
+                ? 'Cadastre-se'
+                : mode === 'register'
+                  ? 'Entrar'
+                  : 'Voltar ao login'}
             </span>
           </button>
         </motion.div>
