@@ -54,18 +54,19 @@ export class ShopeeProvider implements MarketplaceProvider {
       );
     }
 
-    const dimension = this.dimensionPayload(draft);
     const body = {
       category_id: Number(draft.categoryId),
       item_name: draft.title.slice(0, 120),
       description: draft.description.slice(0, 5000),
       item_sku: (draft.sellerSku || draft.listingId).slice(0, 100),
       weight: draft.weight ?? 0.3,
-      ...(dimension ? { dimension } : {}),
-      price_info: [{ original_price: draft.price }],
-      normal_stock: draft.stock,
+      dimension: this.dimensionPayload(draft),
+      original_price: draft.price,
+      seller_stock: [{ stock: draft.stock }],
       logistic_info: logisticInfo,
       image: { image_id_list: imageIds.slice(0, 9) },
+      condition: 'NEW',
+      brand: { brand_id: 0, original_brand_name: 'NoBrand' },
     };
 
     const json = await this.client.request<{ response?: { item_id?: number } }>(
@@ -90,27 +91,30 @@ export class ShopeeProvider implements MarketplaceProvider {
       const res = await fetch(url);
       if (!res.ok) continue;
       const contentType = res.headers.get('content-type') ?? 'image/jpeg';
-      const extension = contentType.includes('png')
-        ? 'png'
-        : contentType.includes('webp')
-          ? 'webp'
-          : 'jpg';
+      if (contentType.includes('webp')) continue;
+      const extension = contentType.includes('png') ? 'png' : 'jpg';
       const buffer = Buffer.from(await res.arrayBuffer());
-      ids.push(
-        await this.client.uploadImage(
-          accessToken,
-          shopId,
-          buffer,
-          `${draft.listingId}-${index + 1}.${extension}`,
-        ),
-      );
+      try {
+        ids.push(
+          await this.client.uploadImage(
+            accessToken,
+            shopId,
+            buffer,
+            `${draft.listingId}-${index + 1}.${extension}`,
+          ),
+        );
+      } catch {
+        continue;
+      }
     }
     return ids;
   }
 
   private dimensionPayload(draft: MarketplacePublicationDraft) {
     const { length, width, height } = draft.dimensions ?? {};
-    if (!length || !width || !height) return undefined;
+    if (!length || !width || !height) {
+      return { package_length: 20, package_width: 15, package_height: 10 };
+    }
     return { package_length: length, package_width: width, package_height: height };
   }
 }

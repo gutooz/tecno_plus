@@ -6,16 +6,19 @@ export interface ShopeeAddItemPayload {
   description: string;
   item_sku: string;
   weight: number;
-  dimension?: { package_length: number; package_width: number; package_height: number };
-  price_info: [{ original_price: number }];
-  normal_stock: number;
+  dimension: { package_length: number; package_width: number; package_height: number };
+  original_price: number;
+  seller_stock: Array<{ stock: number }>;
   logistic_info: Array<{ logistic_id: number; enabled: boolean }>;
   image: { image_id_list: string[] };
+  condition: 'NEW';
+  brand: { brand_id: number; original_brand_name: string };
 }
 
 /** Peso/estoque padrão quando o produto não trouxe o dado (modelo dropshipping — sem contagem física). */
 const DEFAULT_WEIGHT_KG = 0.3;
 const DEFAULT_STOCK = 50;
+const DEFAULT_DIMENSION_CM = { package_length: 20, package_width: 15, package_height: 10 };
 
 /**
  * Traduz o produto do catálogo para o corpo do `product.add_item` /
@@ -54,7 +57,8 @@ export function mapProductToShopeeItem(product: Product, imageIds: string[]): Sh
   const dimension =
     length && width && height
       ? { package_length: length, package_width: width, package_height: height }
-      : undefined;
+      : DEFAULT_DIMENSION_CM;
+  const brand = product.vision.brand?.trim() || 'NoBrand';
 
   return {
     category_id: categoryId,
@@ -63,9 +67,11 @@ export function mapProductToShopeeItem(product: Product, imageIds: string[]): Sh
     item_sku: product.internalSku,
     weight,
     dimension,
-    price_info: [{ original_price: price }],
-    normal_stock: product.vision.quantity ?? DEFAULT_STOCK,
+    original_price: price,
+    seller_stock: [{ stock: product.vision.quantity ?? DEFAULT_STOCK }],
     logistic_info: [],
     image: { image_id_list: imageIds.slice(0, 9) },
+    condition: 'NEW',
+    brand: { brand_id: 0, original_brand_name: brand },
   };
 }

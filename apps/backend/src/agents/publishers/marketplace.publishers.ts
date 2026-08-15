@@ -81,14 +81,22 @@ export class ShopeePublisher implements MarketplacePublisher {
         continue;
       }
       const buffer = Buffer.from(await res.arrayBuffer());
-      ids.push(
-        await this.client.uploadImage(
-          accessToken,
-          shopId,
-          buffer,
-          `${product.internalSku}-${i}.jpg`,
-        ),
-      );
+      try {
+        ids.push(
+          await this.client.uploadImage(
+            accessToken,
+            shopId,
+            buffer,
+            `${product.internalSku}-${i}.jpg`,
+          ),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Shopee recusou a imagem ${i + 1} do produto ${product.internalSku}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
 
     return ids;
