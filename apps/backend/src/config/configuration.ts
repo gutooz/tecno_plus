@@ -6,6 +6,12 @@ export default () => ({
   env: process.env.NODE_ENV ?? 'development',
   // Render/Heroku injetam PORT dinamicamente; localmente usamos BACKEND_PORT
   port: parseInt(process.env.PORT ?? process.env.BACKEND_PORT ?? '3333', 10),
+  app: {
+    publicUrl:
+      process.env.PUBLIC_APP_URL ??
+      process.env.NEXT_PUBLIC_API_URL?.replace(/\/api$/i, '') ??
+      'http://localhost:3000',
+  },
 
   mongo: {
     uri: process.env.MONGO_URI ?? 'mongodb://localhost:27017/tecnoplus',
@@ -17,6 +23,24 @@ export default () => ({
     expiresIn: process.env.JWT_EXPIRES_IN ?? '15m',
     refreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret-change-me',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+  },
+
+  email: {
+    provider: process.env.EMAIL_PROVIDER ?? (process.env.RESEND_API_KEY ? 'resend' : 'smtp'),
+    resendApiKey: process.env.RESEND_API_KEY ?? '',
+    resendFrom: process.env.RESEND_FROM ?? '',
+    replyTo: process.env.EMAIL_REPLY_TO ?? process.env.SMTP_USER ?? '',
+    host: process.env.SMTP_HOST ?? '',
+    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER ?? '',
+    pass: process.env.SMTP_PASS ?? '',
+    oauthClientId: process.env.SMTP_OAUTH_CLIENT_ID ?? '',
+    oauthClientSecret: process.env.SMTP_OAUTH_CLIENT_SECRET ?? '',
+    oauthRefreshToken: process.env.SMTP_OAUTH_REFRESH_TOKEN ?? '',
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER ?? '',
+    appName: process.env.EMAIL_APP_NAME ?? 'Tecno Plus',
+    passwordResetExpiresMinutes: parseInt(process.env.PASSWORD_RESET_EXPIRES_MINUTES ?? '60', 10),
   },
 
   ai: {

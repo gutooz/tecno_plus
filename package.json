@@ -17,6 +17,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "test": "npm run test --workspace @tecnoplus/backend",
+    "email:check": "node scripts/email-check.mjs",
     "infra:up": "docker compose up -d mongo redis",
     "infra:down": "docker compose down",
     "prepare": "husky || true"
