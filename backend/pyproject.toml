@@ -1,0 +1,43 @@
+[project]
+name = "tecnoplus-backend"
+version = "0.1.0"
+description = "FastAPI backend for the Tecno Plus incremental migration"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic[email]>=2.8.0",
+    "pydantic-settings>=2.4.0",
+    "motor>=3.5.0",
+    "pymongo>=4.8.0",
+    "pyjwt>=2.9.0",
+    "bcrypt>=4.0.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.27.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.0",
+    "mypy>=1.11.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["tests/"]

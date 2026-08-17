@@ -2,6 +2,7 @@
 node_modules/
 .pnp
 .pnp.js
+.venv/
 
 # Builds
 dist/
@@ -9,6 +10,9 @@ build/
 .next/
 out/
 *.tsbuildinfo
+*.egg-info/
+__pycache__/
+*.py[cod]
 
 # Env
 .env
@@ -31,6 +35,9 @@ Thumbs.db
 
 # Test / coverage
 coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Docker volumes (local)
 .docker-data/
