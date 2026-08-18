@@ -2,11 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
+  GeneratedContent,
   MarketplaceChannel,
   PipelineJobData,
   Product as ProductDomain,
+  ProductVisionAttributes,
   ProductStatus,
   QueueName,
+  slugify,
 } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { AgentLog, AgentLogDocument } from '../database/schemas/agent-log.schema';
@@ -61,34 +64,13 @@ export class PipelineOrchestrator {
 
       // Preserva TÍTULO e PREÇO informados pelo operador (fluxo Telegram):
       // a visão enriquece marca/categoria, mas não sobrescreve o que o humano deu.
-      const existing = (product.vision ?? {}) as {
-        name?: string;
-        labelPrice?: number;
-        weight?: number;
-        weightSource?: 'etiqueta' | 'estimado';
-        length?: number;
-        width?: number;
-        height?: number;
-        quantity?: number;
-      };
-      const hasUserTitle = Boolean(existing.name);
-      const mergedVision: Record<string, unknown> = {
-        ...out.attributes,
-        name: existing.name || out.attributes.name,
-        labelPrice: existing.labelPrice ?? out.attributes.labelPrice,
-        // Mesmo princípio para o PESO: o que já existe veio de medição ou da tela
-        // do operador; o da IA é estimativa. Estimativa não sobrescreve medição —
-        // e peso errado é frete cobrado errado em toda venda.
-        weight: existing.weight ?? out.attributes.weight,
-        weightSource: existing.weight != null ? existing.weightSource : out.attributes.weightSource,
-        // Estoque: modelo de dropshipping, não há contagem física pra "ler" — o
-        // fornecedor é quem tem o produto. Sem número real disponível (nem digitado
-        // pelo operador, nem visível na embalagem), gera um valor entre 50 e 100
-        // pra não ficar zerado/parado. Existente (real ou já gerado) nunca é
-        // sobrescrito.
-        quantity:
-          existing.quantity ?? out.attributes.quantity ?? Math.floor(50 + Math.random() * 51),
-      };
+      const existing = (product.vision ?? {}) as ProductVisionAttributes;
+      const hasUserTitle = Boolean(nonBlankString(existing.name));
+      const mergedVision = mergeVisionWithOperatorFields(
+        existing,
+        out.attributes,
+        Math.floor(50 + Math.random() * 51),
+      );
 
       // Medidas do pacote (comprimento/largura/altura): a visão não lê isso da
       // foto, então pedimos ao Weight Agent — mesma estimativa por atributos que
@@ -145,7 +127,10 @@ export class PipelineOrchestrator {
     await this.withLog('content', data.productId, async () => {
       const product = await this.load(data.productId);
       const out = await this.content.run(product.vision, (product.market as never) ?? undefined);
-      await this.products.updateOne({ _id: data.productId }, { $set: { content: out.content } });
+      await this.products.updateOne(
+        { _id: data.productId },
+        { $set: { content: mergeContentWithOperatorTitle(product.vision, out.content) } },
+      );
       await this.queue.enqueue(QueueName.IMAGE, data);
       return out.usage;
     });
@@ -277,11 +262,11 @@ export function resolvePricingDecision(product: {
   market?: Record<string, unknown> | null;
 }): PricingDecision {
   const isTelegram = product.source === 'telegram';
-  const fromVision = positiveNumber(product.vision?.labelPrice);
   const fromManualPricing = positiveNumber(product.pricing?.purchasePrice);
+  const fromVision = positiveNumber(product.vision?.labelPrice);
   const fromMarket = positiveNumber(product.market?.minPrice);
 
-  const purchasePrice = fromVision ?? fromManualPricing ?? (isTelegram ? undefined : fromMarket);
+  const purchasePrice = fromManualPricing ?? fromVision ?? (isTelegram ? undefined : fromMarket);
 
   return {
     purchasePrice: purchasePrice ?? 0,
@@ -292,4 +277,47 @@ export function resolvePricingDecision(product: {
 
 function positiveNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function nonBlankString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+export function mergeVisionWithOperatorFields(
+  existing: ProductVisionAttributes,
+  detected: ProductVisionAttributes,
+  generatedQuantity: number,
+): ProductVisionAttributes {
+  return {
+    ...detected,
+    name: nonBlankString(existing.name) ?? detected.name,
+    labelPrice: positiveNumber(existing.labelPrice) ?? detected.labelPrice,
+    // Mesmo princípio para o PESO: o que já existe veio de medição ou da tela
+    // do operador; o da IA é estimativa. Estimativa não sobrescreve medição.
+    weight: positiveNumber(existing.weight) ?? detected.weight,
+    weightSource:
+      positiveNumber(existing.weight) != null ? existing.weightSource : detected.weightSource,
+    quantity:
+      typeof existing.quantity === 'number' && Number.isFinite(existing.quantity)
+        ? existing.quantity
+        : (detected.quantity ?? generatedQuantity),
+  };
+}
+
+export function mergeContentWithOperatorTitle(
+  vision: ProductVisionAttributes,
+  content: GeneratedContent,
+): GeneratedContent {
+  const operatorTitle = nonBlankString(vision.name);
+  if (!operatorTitle) return content;
+
+  return {
+    ...content,
+    title: operatorTitle,
+    seo: {
+      ...content.seo,
+      slug: content.seo?.slug || slugify(operatorTitle),
+      metaDescription: content.seo?.metaDescription || operatorTitle.slice(0, 155),
+    },
+  };
 }

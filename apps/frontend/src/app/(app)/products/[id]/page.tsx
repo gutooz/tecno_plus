@@ -124,6 +124,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       const weight = Number(fields.weight.replace(',', '.'));
       const stock = Number(fields.stock.replace(',', '.'));
       await api.put(`/products/${id}`, {
+        'vision.name': fields.title,
         'content.title': fields.title,
         'content.description': fields.description,
         'content.longDescription': fields.description,

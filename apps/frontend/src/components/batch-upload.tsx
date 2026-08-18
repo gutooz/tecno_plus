@@ -178,6 +178,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
 
       await api.put(`/products/${id}`, {
         'vision.name': product.name,
+        'content.title': product.name,
         'vision.labelPrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
         // Peso é obrigatório pela Shopee (frete) — só grava se um número > 0 foi
         // digitado; nunca inventamos um valor (chave omitida = undefined no JSON).
@@ -202,7 +203,7 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             : 0,
         'pricing.marginPercent':
           Number.isFinite(salePrice) && salePrice > 0 && Number.isFinite(purchasePrice)
-            ? (salePrice - purchasePrice) / salePrice
+            ? ((salePrice - purchasePrice) / salePrice) * 100
             : 0,
         'pricing.roi':
           Number.isFinite(purchasePrice) && purchasePrice > 0 && Number.isFinite(salePrice)
