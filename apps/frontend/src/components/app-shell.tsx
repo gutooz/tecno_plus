@@ -16,8 +16,10 @@ import {
   Boxes,
   ClipboardList,
   CreditCard,
+  Globe2,
   ShieldCheck,
   Store,
+  ShoppingBag,
   Truck,
   Users,
   Moon,
@@ -56,10 +58,10 @@ const SUPPLIER_NAV: NavItem[] = [
 ];
 
 const SELLER_NAV: NavItem[] = [
-  { href: '/seller', label: 'Visão geral', icon: LayoutDashboard },
-  { href: '/seller/catalog', label: 'Catálogo', icon: Store },
-  { href: '/seller/listings', label: 'Meus produtos', icon: Package },
-  { href: '/seller/store', label: 'Minha loja Shopee', icon: Plug },
+  { href: '/seller', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/seller/catalog', label: 'Shopping', icon: Store },
+  { href: '/seller/shopee', label: 'Shopee', icon: ShoppingBag },
+  { href: '/seller/platforms', label: 'Todas plataformas', icon: Globe2 },
   { href: '/seller/orders', label: 'Pedidos', icon: ClipboardList },
   { href: '/seller/finance', label: 'Financeiro', icon: CreditCard },
   { href: '/notifications', label: 'Notificações', icon: Bell },
@@ -69,8 +71,10 @@ const SELLER_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { href: '/admin', label: 'Admin', icon: ShieldCheck },
   { href: '/dashboard', label: 'Catálogo IA', icon: LayoutDashboard },
+  { href: '/lote', label: 'Aguardando Produtos', icon: Layers },
   { href: '/products', label: 'Produtos IA', icon: Package },
-  { href: '/integrations', label: 'Integrações', icon: Plug },
+  { href: '/admin/shopee', label: 'Shopee', icon: ShoppingBag },
+  { href: '/admin/mercado-livre', label: 'Mercado Livre', icon: Store },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];
 
@@ -146,7 +150,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </p>
         <nav className="flex flex-1 flex-col gap-0.5">
           {nav.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href);
+            const active =
+              href === '/seller' || href === '/admin'
+                ? pathname === href
+                : pathname.startsWith(href);
             return (
               <Link
                 key={href}
@@ -208,7 +215,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Nav inferior mobile */}
       <nav className="glass fixed inset-x-0 bottom-0 z-30 flex items-stretch justify-around pb-[env(safe-area-inset-bottom)] md:hidden">
         {nav.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
+          const active =
+            href === '/seller' || href === '/admin' ? pathname === href : pathname.startsWith(href);
           return (
             <Link
               key={href}

@@ -16,7 +16,6 @@ async def register(
         email=str(payload.email),
         password=payload.password,
         name=payload.name,
-        profile_type=payload.profileType,
     )
 
 
@@ -34,4 +33,3 @@ async def refresh(
     service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
     return await service.refresh(payload.refreshToken)
-

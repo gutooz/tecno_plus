@@ -35,6 +35,16 @@ Responda em JSON válido no formato exato:
 }
 Use null quando não conseguir determinar. Não invente EAN/barcode.
 
+PREÇO PAGO / labelPrice:
+• Só preencha "labelPrice" quando houver um preço monetário claramente visível
+  na imagem ou etiqueta, como "R$ 19,99", "$19.99", "19,99" acompanhado de
+  texto de preço/valor/custo.
+• NÃO use volume, capacidade, modelo, SKU, REF, código, lote, quantidade,
+  medida, código de barras ou número de certificação como preço.
+  Exemplos que NÃO são preço: 650ml, 40oz, 1200ml, 789, GDR1001, REF1009.
+• Se o preço estiver ausente, borrado ou ambíguo, use null. Não estime
+  preço pago pela aparência do produto nem por preço de mercado.
+
 PESO — única exceção à regra acima; nunca devolva null:
 "weight" é o peso de envio em QUILOS, já COM a embalagem.
 • Se estiver escrito na etiqueta/embalagem, leia e use "weightSource": "etiqueta".

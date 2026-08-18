@@ -60,7 +60,9 @@ export class GeminiProvider implements AIProvider {
 
   async analyzeImage<T = string>(req: AIVisionRequest): Promise<AICompletion<T>> {
     const modelName = req.model ?? this.config.visionModel;
-    const { base64, mediaType } = await fetchImageAsBase64(req.imageUrl);
+    const images = await Promise.all(
+      [req.imageUrl, ...(req.imageUrls ?? [])].map(fetchImageAsBase64),
+    );
     const model = this.client.getGenerativeModel({
       model: modelName,
       generationConfig: {
@@ -70,7 +72,9 @@ export class GeminiProvider implements AIProvider {
     });
 
     const res = await model.generateContent([
-      { inlineData: { data: base64, mimeType: mediaType } },
+      ...images.map(({ base64, mediaType }) => ({
+        inlineData: { data: base64, mimeType: mediaType },
+      })),
       { text: req.prompt },
     ]);
     const raw = res.response.text();

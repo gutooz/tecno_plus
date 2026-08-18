@@ -48,6 +48,20 @@ export class MercadoLivreApiClient {
     return Boolean(this.clientId && this.clientSecret && this.redirectUrl);
   }
 
+  publicConfig() {
+    return {
+      configured: this.configured,
+      authHost: this.authHost,
+      apiHost: this.apiHost,
+      redirectUrl: this.redirectUrl,
+      missing: [
+        !this.clientId && 'MERCADO_LIVRE_CLIENT_ID',
+        !this.clientSecret && 'MERCADO_LIVRE_CLIENT_SECRET',
+        !this.redirectUrl && 'MERCADO_LIVRE_REDIRECT_URI',
+      ].filter(Boolean),
+    };
+  }
+
   /** Par PKCE (S256) — o verifier fica salvo junto do `state` até o callback trocar o `code`. */
   generatePkcePair(): { codeVerifier: string; codeChallenge: string } {
     const codeVerifier = randomBytes(32).toString('base64url');

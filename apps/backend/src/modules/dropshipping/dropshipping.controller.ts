@@ -180,8 +180,25 @@ export class DropshippingController {
   }
 
   @Get('seller/listings')
-  sellerListings(@CurrentUser() user: AuthUser) {
-    return this.dropshipping.listSellerListings(user);
+  sellerListings(
+    @CurrentUser() user: AuthUser,
+    @Query('marketplace') marketplace?: string,
+  ): Promise<unknown> {
+    return this.dropshipping.listSellerListings(user, { marketplace });
+  }
+
+  @Patch('seller/listings/:id')
+  updateSellerListing(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ): Promise<unknown> {
+    return this.dropshipping.updateSellerListing(user, id, body);
+  }
+
+  @Delete('seller/listings/:id')
+  removeSellerListing(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<unknown> {
+    return this.dropshipping.removeSellerListing(user, id);
   }
 
   @Post('seller/listings/:id/request-publication')
@@ -190,8 +207,8 @@ export class DropshippingController {
   }
 
   @Get('seller/orders')
-  sellerOrders(@CurrentUser() user: AuthUser) {
-    return this.dropshipping.sellerOrdersList(user);
+  sellerOrders(@CurrentUser() user: AuthUser, @Query('date') date?: string) {
+    return this.dropshipping.sellerOrdersList(user, { date });
   }
 
   @Get('seller/finance')
@@ -212,6 +229,19 @@ export class DropshippingController {
   @Get('admin/dashboard')
   adminDashboard(@CurrentUser() user: AuthUser) {
     return this.dropshipping.adminDashboard(user);
+  }
+
+  @Get('admin/platform-fee-rules')
+  adminPlatformFeeRules(@CurrentUser() user: AuthUser): Promise<unknown> {
+    return this.dropshipping.adminPlatformFeeRules(user);
+  }
+
+  @Patch('admin/platform-fee-rules')
+  updateAdminPlatformFeeRules(
+    @CurrentUser() user: AuthUser,
+    @Body() body: Record<string, unknown>,
+  ): Promise<unknown> {
+    return this.dropshipping.updateAdminPlatformFeeRules(user, body);
   }
 }
 

@@ -13,6 +13,7 @@ import {
   Plus,
   PackageOpen,
   Scale,
+  ShoppingBag,
   Sparkles,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -30,6 +31,7 @@ interface ProductRow {
   pricing?: { purchasePrice?: number; suggestedPrice?: number; marginPercent?: number };
   images?: { thumbnail?: string };
   publishedChannels?: string[];
+  externalIds?: Record<string, string>;
   createdAt?: string;
 }
 
@@ -56,6 +58,13 @@ interface ShopeeExportReport {
   rejected: number;
   errors: number;
   warnings: number;
+}
+
+interface PublishBatchResponse {
+  total: number;
+  published: number;
+  skippedExisting?: number;
+  failed?: number;
 }
 
 /** O backend escapa acentos p/ caber no header HTTP (ver `encodeReportHeader`
@@ -142,18 +151,23 @@ export default function ProductsPage() {
     setSelected((prev) => (prev.size === ids.length ? new Set() : new Set(ids)));
   }
 
-  async function publishSelected() {
+  async function publishShopeeSelected() {
     if (!selected.size) return;
     setPublishing(true);
     try {
-      const res = await api.post<{ total: number; published: number }>('/products/publish-batch', {
+      const res = await api.post<PublishBatchResponse>('/products/publish-batch', {
         ids: [...selected],
+        channel: 'shopee',
       });
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ['products'] });
-      alert(`${res.published}/${res.total} produtos publicados.`);
+      alert(
+        `${res.published}/${res.total} produto(s) subido(s) para a Shopee.\n` +
+          `${res.skippedExisting ?? 0} já existia(m) na sua Shopee e foram pulado(s).\n` +
+          `${res.failed ?? 0} falharam.`,
+      );
     } catch (e) {
-      alert(`Não foi possível publicar: ${e instanceof Error ? e.message : String(e)}`);
+      alert(`Não foi possível subir para a Shopee: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPublishing(false);
     }
@@ -257,6 +271,9 @@ export default function ProductsPage() {
 
   const allChecked = Boolean(data?.items.length) && selected.size === data?.items.length;
   const isEmpty = data && data.items.length === 0 && !isLoading;
+  const selectedRows = data?.items.filter((p) => selected.has(p._id)) ?? [];
+  const selectedAlreadyOnShopee = selectedRows.filter(hasShopeeListing).length;
+  const selectedPendingShopee = Math.max(0, selected.size - selectedAlreadyOnShopee);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -288,6 +305,41 @@ export default function ProductsPage() {
         </Link>
       </PageHeader>
 
+      <Card className="mb-3 flex flex-wrap items-center gap-3 p-4">
+        <Checkbox checked={allChecked} onChange={toggleSelectAll} aria-label="Selecionar todos" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">Envio para Shopee</p>
+          <p className="text-sm text-muted">
+            Selecione todos os produtos da página e suba apenas os que ainda não existem na sua
+            Shopee.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {selected.size > 0 && (
+            <span className="rounded-full bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted">
+              {selectedPendingShopee} para subir · {selectedAlreadyOnShopee} já na Shopee
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!data?.items.length}
+            onClick={toggleSelectAll}
+          >
+            {allChecked ? 'Limpar seleção' : 'Selecionar todos'}
+          </Button>
+          <Button
+            size="sm"
+            loading={publishing}
+            disabled={!selected.size || selectedPendingShopee === 0}
+            onClick={publishShopeeSelected}
+          >
+            {!publishing && <ShoppingBag size={15} />}
+            {publishing ? 'Subindo…' : `Subir para Shopee (${selectedPendingShopee})`}
+          </Button>
+        </div>
+      </Card>
+
       {/* Barra de ações contextual — aparece ao selecionar */}
       {selected.size > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2.5 rounded-2xl border border-primary/20 bg-primary/[0.06] px-4 py-2.5 animate-fade-in">
@@ -315,9 +367,14 @@ export default function ProductsPage() {
               {!exporting && <Download size={15} />}
               {exporting ? 'Gerando…' : `Excel (${selected.size})`}
             </Button>
-            <Button size="sm" loading={publishing} onClick={publishSelected}>
+            <Button
+              size="sm"
+              loading={publishing}
+              disabled={selectedPendingShopee === 0}
+              onClick={publishShopeeSelected}
+            >
               {!publishing && <Send size={15} />}
-              {publishing ? 'Publicando…' : `Publicar (${selected.size})`}
+              {publishing ? 'Subindo…' : `Subir Shopee (${selectedPendingShopee})`}
             </Button>
           </div>
         </div>
@@ -550,6 +607,10 @@ export default function ProductsPage() {
       )}
     </div>
   );
+}
+
+function hasShopeeListing(product: ProductRow): boolean {
+  return Boolean(product.externalIds?.shopee || product.publishedChannels?.includes('shopee'));
 }
 
 function rowClass(checked: boolean): string {

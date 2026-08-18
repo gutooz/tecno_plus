@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, CreditCard, QrCode } from 'lucide-react';
+import { Copy, CreditCard, QrCode, WalletCards } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, Skeleton, StatusPill } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
@@ -59,7 +59,7 @@ export default function SellerFinancePage() {
     <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Financeiro"
-        subtitle="Pix por venda: custo do fornecedor + taxa fixa de R$ 3,00 para o sistema"
+        subtitle="Cobrança por fornecedor: valor do fornecedor + taxa configurada da plataforma"
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -76,6 +76,34 @@ export default function SellerFinancePage() {
           loading={isLoading}
         />
       </div>
+
+      <Card className="mb-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold">Método de pagamento</p>
+            <p className="mt-1 text-sm text-muted">
+              Pix fica disponível com QR Code. Cartão salvo ficará pronto para débito automático via
+              Stripe.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[420px]">
+            <div className="rounded-2xl border border-primary/35 bg-primary/10 px-3 py-2 text-primary">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <QrCode size={16} />
+                Pix QR Code
+              </div>
+              <p className="mt-1 text-xs text-muted">Disponível agora</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-surface-2/60 px-3 py-2 text-muted">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <WalletCards size={16} />
+                Cartão salvo
+              </div>
+              <p className="mt-1 text-xs text-muted">Stripe em preparação</p>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <div className="grid gap-3">
         {isLoading &&
@@ -95,9 +123,12 @@ export default function SellerFinancePage() {
                   Fornecedor: {entry.supplier?.name || entry.supplier?.email || '-'}
                 </p>
                 <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-                  <Info label="Fornecedor" value={money(entry.amounts.supplierAmount ?? 0)} />
-                  <Info label="Taxa sistema" value={money(entry.amounts.platformFee ?? 0)} />
-                  <Info label="Pix total" value={money(entry.amounts.sellerChargeAmount ?? 0)} />
+                  <Info label="Valor fornecedor" value={money(entry.amounts.supplierAmount ?? 0)} />
+                  <Info label="Taxa plataforma" value={money(entry.amounts.platformFee ?? 0)} />
+                  <Info
+                    label="Total a debitar"
+                    value={money(entry.amounts.sellerChargeAmount ?? 0)}
+                  />
                 </div>
               </div>
 
@@ -105,14 +136,20 @@ export default function SellerFinancePage() {
                 {entry.pix?.payload ? (
                   <PixBox entry={entry} />
                 ) : (
-                  <Button
-                    loading={generatePix.isPending}
-                    onClick={() => generatePix.mutate(entry.id)}
-                    className="w-full sm:w-auto"
-                  >
-                    <QrCode size={16} />
-                    Gerar Pix
-                  </Button>
+                  <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
+                    <Button
+                      loading={generatePix.isPending}
+                      onClick={() => generatePix.mutate(entry.id)}
+                      className="w-full sm:w-auto"
+                    >
+                      <QrCode size={16} />
+                      Gerar Pix
+                    </Button>
+                    <Button type="button" variant="outline" disabled className="w-full sm:w-auto">
+                      <WalletCards size={16} />
+                      Debitar cartão
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>

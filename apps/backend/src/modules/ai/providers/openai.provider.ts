@@ -51,6 +51,7 @@ export class OpenAIProvider implements AIProvider {
 
   async analyzeImage<T = string>(req: AIVisionRequest): Promise<AICompletion<T>> {
     const model = req.model ?? this.config.visionModel;
+    const imageUrls = [req.imageUrl, ...(req.imageUrls ?? [])];
     const res = await this.client.chat.completions.create({
       model,
       max_tokens: req.maxTokens ?? 1500,
@@ -60,7 +61,7 @@ export class OpenAIProvider implements AIProvider {
           role: 'user',
           content: [
             { type: 'text', text: req.prompt },
-            { type: 'image_url', image_url: { url: req.imageUrl } },
+            ...imageUrls.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
           ],
         },
       ],

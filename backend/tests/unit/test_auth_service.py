@@ -41,7 +41,6 @@ async def test_register_returns_legacy_contract() -> None:
         email="Seller@Example.com",
         password="password123",
         name="Seller",
-        profile_type="seller",
     )
 
     assert response.accessToken
@@ -67,7 +66,6 @@ async def test_register_rejects_existing_email() -> None:
             email="seller@example.com",
             password="password123",
             name=None,
-            profile_type=None,
         )
 
 

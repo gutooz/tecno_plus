@@ -79,6 +79,81 @@ export class UploadsService {
     return { id: String(created._id), internalSku: created.internalSku, status: created.status };
   }
 
+  /**
+   * Caminho do Telegram em lote com IA automática: bloqueia a mesma imagem
+   * repetida, cria o produto já visível como PROCESSING e dispara o pipeline
+   * para visão, conteúdo, imagens de IA e preço sugerido.
+   */
+  async ingestAutoProcessed(
+    ownerId: string,
+    file: UploadedImage,
+    source = 'telegram',
+  ): Promise<IngestResult> {
+    return this.ingestAutoProcessedWithReferences(ownerId, file, [], source);
+  }
+
+  /**
+   * Variação para álbum do Telegram: a primeira imagem vira a foto original do
+   * anúncio; as demais ficam como referências para a IA ler etiqueta/preço.
+   */
+  async ingestAutoProcessedWithReferences(
+    ownerId: string,
+    file: UploadedImage,
+    references: UploadedImage[] = [],
+    source = 'telegram',
+  ): Promise<IngestResult> {
+    const imageHash = this.sha256(file.buffer);
+    const dup = await this.findDuplicate(ownerId, '', imageHash);
+    if (dup) {
+      const vision = (dup.vision ?? {}) as { name?: string };
+      return {
+        duplicate: true,
+        existing: {
+          id: String(dup._id),
+          internalSku: dup.internalSku,
+          name: vision.name ?? dup.internalSku,
+        },
+      };
+    }
+
+    const created = await this.products.create({
+      ownerId,
+      internalSku: buildInternalSku(undefined, `${Date.now()}${Math.round(Math.random() * 1e6)}`),
+      status: ProductStatus.PROCESSING,
+      images: {},
+      vision: {},
+      imageHash,
+      source,
+    });
+
+    const ext = (file.mimeType.split('/')[1] ?? 'jpg').split('+')[0];
+    const path = `products/${String(created._id)}/original.${ext}`;
+    const url = await this.storage.upload(path, file.buffer, file.mimeType);
+
+    const referenceUrls: string[] = [];
+    for (const [index, ref] of references.entries()) {
+      const refExt = (ref.mimeType.split('/')[1] ?? 'jpg').split('+')[0];
+      const refPath = `products/${String(created._id)}/reference-${index + 1}.${refExt}`;
+      referenceUrls.push(await this.storage.upload(refPath, ref.buffer, ref.mimeType));
+    }
+
+    created.set('images', {
+      original: url,
+      ...(referenceUrls.length ? { references: referenceUrls } : {}),
+    });
+    await created.save();
+
+    await this.queue.startPipeline({ productId: String(created._id), ownerId });
+    this.logger.log(`Telegram lote: produto ${created.internalSku} criado e enfileirado.`);
+
+    return {
+      duplicate: false,
+      id: String(created._id),
+      internalSku: created.internalSku,
+      status: created.status,
+    };
+  }
+
   /** Procura produto repetido do mesmo dono (mesmo título OU mesma imagem). */
   async findDuplicate(ownerId: string, nameKey: string, imageHash: string) {
     const or: FilterQuery<ProductDocument>[] = [];

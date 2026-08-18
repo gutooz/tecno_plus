@@ -28,10 +28,20 @@ export class VisionAgent {
 
   constructor(private readonly ai: AiService) {}
 
-  async run(imageUrl: string): Promise<VisionOutcome> {
+  async run(imageUrl: string, referenceImageUrls: string[] = []): Promise<VisionOutcome> {
+    const prompt = referenceImageUrls.length
+      ? `${VISION_PROMPT}
+
+Você recebeu várias imagens do MESMO produto. A primeira imagem é a foto principal do produto.
+As imagens seguintes são referências do mesmo item e podem mostrar etiqueta, preço pago,
+código de barras, embalagem, variação, medida ou detalhes. Use todas para preencher os campos,
+principalmente labelPrice, e não trate etiqueta/foto de preço como produto separado.`
+      : VISION_PROMPT;
+
     const res = await this.ai.analyzeImage<VisionRawResult>({
-      prompt: VISION_PROMPT,
+      prompt,
       imageUrl,
+      imageUrls: referenceImageUrls,
       json: true,
       maxTokens: 1800,
     });

@@ -57,7 +57,9 @@ export class ClaudeProvider implements AIProvider {
 
   async analyzeImage<T = string>(req: AIVisionRequest): Promise<AICompletion<T>> {
     const model = req.model ?? this.config.visionModel;
-    const { base64, mediaType } = await fetchImageAsBase64(req.imageUrl);
+    const images = await Promise.all(
+      [req.imageUrl, ...(req.imageUrls ?? [])].map(fetchImageAsBase64),
+    );
     const res = await this.client.messages.create({
       model,
       max_tokens: req.maxTokens ?? 1500,
@@ -65,10 +67,10 @@ export class ClaudeProvider implements AIProvider {
         {
           role: 'user',
           content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType as never, data: base64 },
-            },
+            ...images.map(({ base64, mediaType }) => ({
+              type: 'image' as const,
+              source: { type: 'base64' as const, media_type: mediaType as never, data: base64 },
+            })),
             {
               type: 'text',
               text: req.json ? `${req.prompt}\nResponda SOMENTE com JSON válido.` : req.prompt,

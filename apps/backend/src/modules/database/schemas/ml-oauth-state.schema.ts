@@ -21,6 +21,9 @@ export class MercadoLivreOauthState {
   @Prop({ required: true })
   codeVerifier!: string;
 
+  @Prop({ default: '/integrations' })
+  returnTo!: string;
+
   @Prop({ required: true, expires: 600 })
   createdAt!: Date;
 }

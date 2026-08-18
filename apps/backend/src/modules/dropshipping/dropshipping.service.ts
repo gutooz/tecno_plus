@@ -65,6 +65,17 @@ interface AsaasPixQrCode {
   expirationDate?: string;
 }
 
+interface PlatformFeeRule {
+  upTo: number;
+  fee: number;
+}
+
+const DEFAULT_PLATFORM_FEE_RULES: PlatformFeeRule[] = [
+  { upTo: 50, fee: 5 },
+  { upTo: 100, fee: 10 },
+  { upTo: 200, fee: 20 },
+];
+
 function pageLimit(page?: number, limit?: number) {
   const safePage = Math.max(1, page ?? 1);
   const safeLimit = Math.min(100, Math.max(1, limit ?? 20));
@@ -82,6 +93,24 @@ function moneyAmount(value: unknown): number {
 
 function dateOnly(date = new Date()): string {
   return date.toISOString().slice(0, 10);
+}
+
+function localDateOnly(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dayBounds(input?: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(input ?? ''));
+  const start = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date();
+  if (!match) start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { date: localDateOnly(start), start, end };
 }
 
 function objectFrom(value: unknown): AnyRecord {
@@ -103,6 +132,17 @@ function hasOriginAddress(record: AnyRecord): boolean {
     hasAnyText(record, ['city', 'cidade']) &&
     hasAnyText(record, ['state', 'uf'])
   );
+}
+
+function supplierStoreName(company: AnyRecord): string {
+  return (
+    firstText(company, ['storeName', 'fantasyName', 'companyName', 'legalName', 'name']) ||
+    'Fornecedor'
+  );
+}
+
+function supplierLogo(company: AnyRecord): string {
+  return firstText(company, ['logoUrl', 'logo', 'brandLogo']);
 }
 
 const ORDER_DOCUMENT_TYPES = new Set([
@@ -191,6 +231,63 @@ function marketplaceOrderDetails(order: AnyRecord | undefined) {
       'platformInvoiceNumber',
     ]),
   };
+}
+
+function marketplaceDashboardKey(marketplace: unknown): 'shopee' | 'mercadoLivre' | 'other' {
+  const normalized = String(marketplace ?? '')
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '');
+  if (normalized === 'shopee') return 'shopee';
+  if (['mercadolivre', 'mercadolibre', 'ml', 'meli'].includes(normalized)) return 'mercadoLivre';
+  return 'other';
+}
+
+function marketplaceOrderSaleAmount(order: AnyRecord): number {
+  const raw = objectFrom(order.rawPayload);
+  const candidates = [
+    raw.saleAmount,
+    raw.totalAmount,
+    raw.orderTotal,
+    raw.total,
+    raw.amount,
+    raw.paidAmount,
+  ];
+  for (const candidate of candidates) {
+    const amount = moneyAmount(candidate);
+    if (amount > 0) return amount;
+  }
+  return 0;
+}
+
+function orderCreatedAt(order: AnyRecord): Date {
+  const date = new Date(String(order.createdAt ?? ''));
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function dashboardItemName(item: AnyRecord): string {
+  return (
+    firstText(item, ['name', 'title', 'productName', 'itemName', 'variationName']) ||
+    firstText(item, ['externalItemId', 'itemId']) ||
+    'Produto sem nome'
+  );
+}
+
+function dashboardItemImage(item: AnyRecord): string {
+  return firstText(item, ['image', 'imageUrl', 'thumbnail', 'thumbnailUrl', 'pictureUrl']);
+}
+
+function dashboardItemQuantity(item: AnyRecord): number {
+  return Math.max(1, numberFrom(item.quantity ?? item.qty ?? item.units, 1));
+}
+
+function dashboardItemAmount(item: AnyRecord): number {
+  const total = moneyAmount(
+    item.saleAmount ?? item.totalAmount ?? item.total ?? item.orderItemTotal ?? item.subtotal,
+  );
+  if (total > 0) return total;
+  return moneyAmount(
+    numberFrom(item.price ?? item.unitPrice ?? item.salePrice) * dashboardItemQuantity(item),
+  );
 }
 
 @Injectable()
@@ -733,23 +830,157 @@ export class DropshippingService {
 
   async sellerDashboard(user: AuthUser) {
     this.requireRole(user, ['seller', 'admin']);
-    const [catalogAvailable, listings, orders, unread] = await Promise.all([
-      this.supplierProducts.countDocuments({
-        status: 'active',
-        allowSellers: true,
-        stock: { $gt: 0 },
+    const [catalogAvailable, listings, marketplaceOrders, financialEntries, notifications, unread] =
+      await Promise.all([
+        this.supplierProducts.countDocuments({
+          status: 'active',
+          allowSellers: true,
+          stock: { $gt: 0 },
+        }),
+        this.listings.countDocuments({ sellerUserId: user.id }),
+        this.marketplaceOrders
+          .find(
+            { sellerUserId: user.id },
+            {
+              marketplace: 1,
+              rawPayload: 1,
+              items: 1,
+              externalOrderId: 1,
+              status: 1,
+              createdAt: 1,
+            },
+          )
+          .sort({ createdAt: -1 })
+          .lean(),
+        this.financialEntries.find({ sellerUserId: user.id }, { amounts: 1, status: 1 }).lean(),
+        this.notifications.find({ userId: user.id }).sort({ createdAt: -1 }).limit(4).lean(),
+        this.notifications.countDocuments({ userId: user.id, read: false }),
+      ]);
+
+    const timeSeries = Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - index));
+      return {
+        date: dateOnly(date),
+        label: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        amount: 0,
+        orders: 0,
+      };
+    });
+    const timeSeriesByDate = new Map(timeSeries.map((bucket) => [bucket.date, bucket]));
+    const topProductsByName = new Map<
+      string,
+      { name: string; units: number; amount: number; imageUrl: string }
+    >();
+    const sales = {
+      total: { orders: marketplaceOrders.length, amount: 0 },
+      shopee: { orders: 0, amount: 0 },
+      mercadoLivre: { orders: 0, amount: 0 },
+      other: { orders: 0, amount: 0 },
+    };
+    let productsSold = 0;
+
+    for (const order of marketplaceOrders) {
+      const rawOrder = order as AnyRecord;
+      const key = marketplaceDashboardKey(rawOrder.marketplace);
+      const amount = marketplaceOrderSaleAmount(rawOrder);
+      const bucket = timeSeriesByDate.get(dateOnly(orderCreatedAt(rawOrder)));
+      sales[key].orders += 1;
+      sales[key].amount = moneyAmount(sales[key].amount + amount);
+      sales.total.amount = moneyAmount(sales.total.amount + amount);
+      if (bucket) {
+        bucket.orders += 1;
+        bucket.amount = moneyAmount(bucket.amount + amount);
+      }
+
+      for (const item of Array.isArray(rawOrder.items) ? (rawOrder.items as AnyRecord[]) : []) {
+        const name = dashboardItemName(item);
+        const quantity = dashboardItemQuantity(item);
+        const current = topProductsByName.get(name) ?? { name, units: 0, amount: 0, imageUrl: '' };
+        current.units += quantity;
+        current.amount = moneyAmount(current.amount + dashboardItemAmount(item));
+        current.imageUrl ||= dashboardItemImage(item);
+        productsSold += quantity;
+        topProductsByName.set(name, current);
+      }
+    }
+
+    const finance = financialEntries.reduce(
+      (acc, entry) => {
+        const amounts = this.sellerChargeAmounts(entry.amounts);
+        acc.supplierCosts = moneyAmount(acc.supplierCosts + amounts.supplierAmount);
+        acc.platformFees = moneyAmount(acc.platformFees + amounts.platformFee);
+        if (entry.status === 'paid') {
+          acc.paid = moneyAmount(acc.paid + amounts.sellerChargeAmount);
+        } else {
+          acc.pending = moneyAmount(acc.pending + amounts.sellerChargeAmount);
+        }
+        return acc;
+      },
+      {
+        gross: sales.total.amount,
+        costs: 0,
+        net: 0,
+        margin: 0,
+        supplierCosts: 0,
+        platformFees: 0,
+        pending: 0,
+        paid: 0,
+      },
+    );
+    finance.costs = moneyAmount(finance.supplierCosts + finance.platformFees);
+    finance.net = moneyAmount(finance.gross - finance.costs);
+    finance.margin = finance.gross > 0 ? Math.round((finance.net / finance.gross) * 1000) / 10 : 0;
+
+    const recentOrders = marketplaceOrders.slice(0, 5).map((order) => {
+      const rawOrder = order as AnyRecord;
+      const rawPayload = objectFrom(rawOrder.rawPayload);
+      return {
+        id: String(rawOrder._id ?? ''),
+        externalOrderId: String(rawOrder.externalOrderId ?? ''),
+        customer:
+          firstText(rawPayload, ['customerName', 'buyerName', 'buyer', 'clientName', 'name']) ||
+          'Cliente',
+        marketplace: String(rawOrder.marketplace ?? ''),
+        status: String(rawOrder.status ?? ''),
+        amount: marketplaceOrderSaleAmount(rawOrder),
+        createdAt: rawOrder.createdAt,
+      };
+    });
+
+    return {
+      catalogAvailable,
+      listings,
+      orders: marketplaceOrders.length,
+      unread,
+      productsSold,
+      sales,
+      ticketAverage:
+        marketplaceOrders.length > 0
+          ? moneyAmount(sales.total.amount / marketplaceOrders.length)
+          : 0,
+      timeSeries,
+      topProducts: [...topProductsByName.values()].sort((a, b) => b.amount - a.amount).slice(0, 5),
+      recentOrders,
+      finance,
+      notifications: notifications.map((notification) => {
+        const rawNotification = notification as AnyRecord;
+        return {
+          id: String(rawNotification._id),
+          title: notification.title,
+          message: notification.message,
+          tone: notification.tone,
+          read: notification.read,
+          createdAt: rawNotification.createdAt,
+        };
       }),
-      this.listings.countDocuments({ sellerUserId: user.id }),
-      this.marketplaceOrders.countDocuments({ sellerUserId: user.id }),
-      this.notifications.countDocuments({ userId: user.id, read: false }),
-    ]);
-    return { catalogAvailable, listings, orders, unread };
+    };
   }
 
   async catalog(
     user: AuthUser,
     q: { search?: string; category?: string; supplier?: string; page?: number; limit?: number },
-  ) {
+  ): Promise<AnyRecord> {
     this.requireRole(user, ['seller', 'admin']);
     const { page, limit, skip } = pageLimit(q.page, q.limit);
     const approvedProfiles = await this.supplierProfiles
@@ -786,11 +1017,78 @@ export class DropshippingService {
       })
       .map((profile) => profile.userId);
 
+    const supplierStats = eligibleSupplierIds.length
+      ? await this.supplierProducts.aggregate<{
+          _id: string;
+          productCount: number;
+          stock: number;
+          minPrice: number;
+          maxPrice: number;
+          categories: string[];
+          images: string[][];
+          salesCount: number;
+        }>([
+          {
+            $match: {
+              status: 'active',
+              allowSellers: true,
+              stock: { $gt: 0 },
+              supplierUserId: { $in: eligibleSupplierIds },
+            },
+          },
+          {
+            $group: {
+              _id: '$supplierUserId',
+              productCount: { $sum: 1 },
+              stock: { $sum: '$stock' },
+              minPrice: { $min: '$costPrice' },
+              maxPrice: { $max: '$costPrice' },
+              categories: { $addToSet: '$category' },
+              images: { $push: '$images' },
+              salesCount: { $sum: '$salesCount' },
+            },
+          },
+          { $sort: { productCount: -1, salesCount: -1 } },
+        ])
+      : [];
+    const statsBySupplier = new Map(supplierStats.map((stats) => [String(stats._id), stats]));
+    const suppliers = approvedProfiles
+      .filter((profile) => eligibleSupplierIds.includes(profile.userId))
+      .map((profile) => {
+        const company = objectFrom(profile.company);
+        const stats = statsBySupplier.get(profile.userId);
+        const images =
+          stats?.images
+            ?.flat()
+            .filter(
+              (image): image is string => typeof image === 'string' && image.trim().length > 0,
+            )
+            .slice(0, 4) ?? [];
+        return {
+          id: profile.userId,
+          name: supplierStoreName(company),
+          logoUrl: supplierLogo(company),
+          productCount: stats?.productCount ?? 0,
+          stock: stats?.stock ?? 0,
+          categories:
+            stats?.categories
+              ?.filter((category): category is string => Boolean(category))
+              .slice(0, 4) ?? [],
+          minPrice: stats?.minPrice ?? 0,
+          maxPrice: stats?.maxPrice ?? 0,
+          salesCount: stats?.salesCount ?? 0,
+          images,
+        };
+      })
+      .filter((supplier) => supplier.productCount > 0)
+      .sort((a, b) => b.productCount - a.productCount || b.salesCount - a.salesCount);
+    const suppliersById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+
     if (q.supplier && !eligibleSupplierIds.includes(q.supplier)) {
-      return { items: [], total: 0, page, limit, pages: 0 };
+      return { items: [], suppliers, total: 0, page, limit, pages: 0 };
     }
     if (!q.supplier && !eligibleSupplierIds.length) {
-      return { items: [], total: 0, page, limit, pages: 0 };
+      return { items: [], suppliers, total: 0, page, limit, pages: 0 };
     }
 
     const filter: FilterQuery<SupplierProductDocument> = {
@@ -801,7 +1099,7 @@ export class DropshippingService {
     };
     if (q.category) filter.category = q.category;
     if (q.search) filter.$text = { $search: q.search };
-    const [items, total] = await Promise.all([
+    const [items, total, platformFeeRules] = await Promise.all([
       this.supplierProducts
         .find(filter)
         .sort({ salesCount: -1, createdAt: -1 })
@@ -809,8 +1107,23 @@ export class DropshippingService {
         .limit(limit)
         .lean(),
       this.supplierProducts.countDocuments(filter),
+      this.platformFeeRules(),
     ]);
-    return { items, total, page, limit, pages: Math.ceil(total / limit) };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        platformFee: this.feeFromRules(item.costPrice, platformFeeRules),
+        shoppingPrice: moneyAmount(
+          item.costPrice + this.feeFromRules(item.costPrice, platformFeeRules),
+        ),
+        supplier: suppliersById.get(String(item.supplierUserId)) ?? null,
+      })),
+      suppliers,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    };
   }
 
   async prepareListing(user: AuthUser, body: AnyRecord) {
@@ -823,7 +1136,11 @@ export class DropshippingService {
     if (!product) throw new NotFoundException('Produto indisponível no catálogo');
 
     const org = await this.ensureOrganization(user, 'seller', 'Vendedor');
-    const pricing = this.calculatePricing(product.costPrice, body.pricing as AnyRecord | undefined);
+    const platformFee = await this.platformFeeForAmount(product.costPrice);
+    const pricing = this.calculatePricing(product.costPrice, {
+      ...(body.pricing as AnyRecord | undefined),
+      platformFee,
+    });
     const listing = await this.listings.create({
       sellerUserId: user.id,
       sellerOrganizationId: String(org._id),
@@ -859,9 +1176,124 @@ export class DropshippingService {
     return listing.toObject();
   }
 
-  async listSellerListings(user: AuthUser) {
+  async listSellerListings(user: AuthUser, q: { marketplace?: string } = {}): Promise<AnyRecord[]> {
     this.requireRole(user, ['seller', 'admin']);
-    return this.listings.find({ sellerUserId: user.id }).sort({ createdAt: -1 }).lean();
+    const filter: FilterQuery<ProductListingDocument> = { sellerUserId: user.id };
+    if (q.marketplace) filter.marketplace = String(q.marketplace);
+    const listings = await this.listings.find(filter).sort({ createdAt: -1 }).lean();
+    const productIds = [...new Set(listings.map((listing) => String(listing.supplierProductId)))];
+    const supplierIds = [...new Set(listings.map((listing) => String(listing.supplierUserId)))];
+    const [products, supplierProfiles] = await Promise.all([
+      this.supplierProducts.find({ _id: { $in: productIds } }).lean(),
+      this.supplierProfiles
+        .find({ userId: { $in: supplierIds } }, { userId: 1, company: 1 })
+        .lean(),
+    ]);
+    const productById = new Map(products.map((product) => [String(product._id), product]));
+    const supplierById = new Map(supplierProfiles.map((profile) => [profile.userId, profile]));
+
+    return listings.map((listing) => {
+      const product = productById.get(String(listing.supplierProductId));
+      const supplier = supplierById.get(String(listing.supplierUserId));
+      const company = objectFrom(supplier?.company);
+      return {
+        ...listing,
+        supplier: supplier
+          ? {
+              id: supplier.userId,
+              name: supplierStoreName(company),
+              logoUrl: supplierLogo(company),
+            }
+          : null,
+        product: product
+          ? {
+              id: String(product._id),
+              name: product.name,
+              supplierSku: product.supplierSku,
+              description: product.description,
+              shortDescription: product.shortDescription,
+              category: product.category,
+              brand: product.brand,
+              images: product.images,
+              stock: product.stock,
+              costPrice: product.costPrice,
+              suggestedPrice: product.suggestedPrice,
+              variations: product.variations,
+              weight: product.weight,
+              dimensions: product.dimensions,
+            }
+          : null,
+      };
+    });
+  }
+
+  async updateSellerListing(user: AuthUser, id: string, body: AnyRecord): Promise<AnyRecord> {
+    this.requireRole(user, ['seller', 'admin']);
+    const listing = await this.listings.findOne({ _id: id, sellerUserId: user.id });
+    if (!listing) throw new NotFoundException('Anuncio nao encontrado');
+    if (listing.status === 'publishing') {
+      throw new BadRequestException('Aguarde a publicacao terminar antes de editar.');
+    }
+
+    const currentData = objectFrom(listing.listingData);
+    const currentPricing = objectFrom(listing.pricing);
+    const nextData: AnyRecord = { ...currentData };
+    const nextPricing: AnyRecord = { ...currentPricing };
+
+    for (const key of ['title', 'description', 'categoryId', 'sellerSku']) {
+      if (body[key] !== undefined) nextData[key] = String(body[key]);
+    }
+    if (body.stockToPublish !== undefined) {
+      nextData.stockToPublish = Math.max(0, Math.floor(numberFrom(body.stockToPublish)));
+    }
+    if (Array.isArray(body.images)) {
+      nextData.images = body.images.filter(
+        (image): image is string => typeof image === 'string' && image.trim().length > 0,
+      );
+    }
+
+    const costPrice = moneyAmount(nextPricing.costPrice);
+    if (body.profitPercent !== undefined && costPrice > 0) {
+      const profitPercent = numberFrom(body.profitPercent);
+      const finalPrice = moneyAmount(costPrice * (1 + profitPercent / 100));
+      nextPricing.profitPercent = profitPercent;
+      nextPricing.finalPrice = finalPrice;
+      nextPricing.profit = moneyAmount(finalPrice - costPrice);
+    }
+    if (body.finalPrice !== undefined) {
+      const finalPrice = Math.max(0, moneyAmount(body.finalPrice));
+      nextPricing.finalPrice = finalPrice;
+      nextPricing.profit = moneyAmount(finalPrice - costPrice);
+      nextPricing.profitPercent =
+        costPrice > 0 ? Math.round(((finalPrice - costPrice) / costPrice) * 1000) / 10 : 0;
+    }
+
+    listing.listingData = nextData;
+    listing.pricing = nextPricing;
+    listing.lastError = '';
+    if (['rejected', 'sync_error'].includes(listing.status)) listing.status = 'draft';
+    await listing.save();
+    await this.audit(user.id, 'listing.update', 'marketplace_listing', id);
+    return this.listSellerListings(user, { marketplace: listing.marketplace }).then(
+      (items) =>
+        items.find((item) => String(item._id) === id) ??
+        (listing.toObject() as unknown as AnyRecord),
+    );
+  }
+
+  async removeSellerListing(user: AuthUser, id: string): Promise<{ ok: true }> {
+    this.requireRole(user, ['seller', 'admin']);
+    const listing = await this.listings.findOne({ _id: id, sellerUserId: user.id });
+    if (!listing) throw new NotFoundException('Anuncio nao encontrado');
+    if (listing.status === 'publishing') {
+      throw new BadRequestException('Aguarde a publicacao terminar antes de excluir.');
+    }
+    await Promise.all([
+      this.listings.deleteOne({ _id: id, sellerUserId: user.id }),
+      this.mappings.deleteMany({ listingId: id, sellerUserId: user.id }),
+    ]);
+    await this.audit(user.id, 'listing.delete', 'marketplace_listing', id);
+    return { ok: true };
   }
 
   async requestPublication(user: AuthUser, id: string) {
@@ -1073,7 +1505,10 @@ export class DropshippingService {
         supplierOrderId: String(supplierOrder._id),
         supplierUserId,
         sellerUserId: user.id,
-        amounts: this.sellerChargeAmounts(supplierOrder.totals),
+        amounts: this.sellerChargeAmounts({
+          ...objectFrom(supplierOrder.totals),
+          platformFee: await this.platformFeeForItems(groupedItems),
+        }),
         status: 'pending',
         gateway: 'asaas',
         metadata: {
@@ -1170,9 +1605,131 @@ export class DropshippingService {
     });
   }
 
-  async sellerOrdersList(user: AuthUser) {
+  async sellerOrdersList(user: AuthUser, q: { date?: string } = {}): Promise<AnyRecord> {
     this.requireRole(user, ['seller', 'admin']);
-    return this.marketplaceOrders.find({ sellerUserId: user.id }).sort({ createdAt: -1 }).lean();
+    const { date, start, end } = dayBounds(q.date);
+    const supplierOrders = await this.supplierOrders
+      .find({
+        sellerUserId: user.id,
+        createdAt: { $gte: start, $lt: end },
+      } as FilterQuery<SupplierOrderDocument>)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const supplierOrderIds = supplierOrders.map((order) => String(order._id));
+    const marketplaceOrderIds = [
+      ...new Set(supplierOrders.map((order) => String(order.marketplaceOrderId)).filter(Boolean)),
+    ];
+    const supplierIds = [
+      ...new Set(supplierOrders.map((order) => String(order.supplierUserId)).filter(Boolean)),
+    ];
+    const [marketplaceOrders, financialEntries, suppliers, supplierProfiles] = await Promise.all([
+      this.marketplaceOrders.find({ _id: { $in: marketplaceOrderIds } }).lean(),
+      this.financialEntries.find({ supplierOrderId: { $in: supplierOrderIds } }).lean(),
+      this.users
+        .find({ _id: { $in: supplierIds } }, { passwordHash: 0, refreshTokenHashes: 0 })
+        .lean(),
+      this.supplierProfiles
+        .find({ userId: { $in: supplierIds } }, { userId: 1, company: 1 })
+        .lean(),
+    ]);
+
+    const marketplaceById = new Map(
+      marketplaceOrders.map((order) => [String(order._id), order as AnyRecord]),
+    );
+    const financialBySupplierOrderId = new Map(
+      financialEntries.map((entry) => [String(entry.supplierOrderId), entry]),
+    );
+    const supplierById = new Map(suppliers.map((supplier) => [String(supplier._id), supplier]));
+    const profileBySupplierId = new Map(
+      supplierProfiles.map((profile) => [String(profile.userId), profile]),
+    );
+
+    const items = supplierOrders.map((order) => {
+      const rawOrder = order as AnyRecord;
+      const marketplace = marketplaceById.get(String(order.marketplaceOrderId));
+      const financial = financialBySupplierOrderId.get(String(rawOrder._id));
+      const amounts = this.sellerChargeAmounts(financial?.amounts ?? order.totals);
+      const supplier = supplierById.get(String(order.supplierUserId));
+      const profile = profileBySupplierId.get(String(order.supplierUserId));
+      const company = objectFrom(profile?.company);
+      return {
+        id: String(rawOrder._id),
+        supplierOrderId: String(rawOrder._id),
+        marketplaceOrderId: String(order.marketplaceOrderId),
+        externalOrderId: order.externalOrderId,
+        marketplace: marketplace
+          ? {
+              name: String(marketplace.marketplace ?? ''),
+              status: String(marketplace.status ?? ''),
+              exceptionReason: String(marketplace.exceptionReason ?? ''),
+            }
+          : null,
+        supplier: {
+          id: String(order.supplierUserId),
+          name: supplierStoreName(company) || supplier?.name || supplier?.email || 'Fornecedor',
+          email: supplier?.email ?? '',
+          logoUrl: supplierLogo(company),
+        },
+        items: order.items,
+        itemCount: Array.isArray(order.items)
+          ? order.items.reduce((sum, item) => sum + dashboardItemQuantity(item as AnyRecord), 0)
+          : 0,
+        totals: {
+          saleAmount: moneyAmount(objectFrom(order.totals).saleAmount),
+          supplierAmount: amounts.supplierAmount,
+          platformFee: amounts.platformFee,
+          sellerChargeAmount: amounts.sellerChargeAmount,
+        },
+        preparationStatus: order.preparationStatus,
+        shippingStatus: order.shippingStatus,
+        supplierPaymentStatus: financial?.status ?? 'pending',
+        supplierPaid: financial?.status === 'paid',
+        financialEntryId: financial ? String(financial._id) : '',
+        paidAt: financial?.paidAt ?? null,
+        createdAt: rawOrder.createdAt,
+      };
+    });
+
+    const supplierGroups = [
+      ...items
+        .reduce((groups: Map<string, any>, item) => {
+          const key = String(item.supplier.id);
+          const current = groups.get(key) ?? {
+            supplier: item.supplier,
+            orders: [],
+            totals: { orders: 0, items: 0, supplierAmount: 0, paid: 0, unpaid: 0 },
+          };
+          current.orders.push(item);
+          current.totals.orders += 1;
+          current.totals.items += item.itemCount;
+          current.totals.supplierAmount = moneyAmount(
+            current.totals.supplierAmount + item.totals.supplierAmount,
+          );
+          if (item.supplierPaid) current.totals.paid += 1;
+          else current.totals.unpaid += 1;
+          groups.set(key, current);
+          return groups;
+        }, new Map<string, any>())
+        .values(),
+    ].sort(
+      (a, b) =>
+        b.totals.orders - a.totals.orders || b.totals.supplierAmount - a.totals.supplierAmount,
+    );
+
+    const totals = items.reduce(
+      (acc, item) => {
+        acc.orders += 1;
+        acc.items += item.itemCount;
+        acc.supplierAmount = moneyAmount(acc.supplierAmount + item.totals.supplierAmount);
+        if (item.supplierPaid) acc.paid += 1;
+        else acc.unpaid += 1;
+        return acc;
+      },
+      { orders: 0, items: 0, supplierAmount: 0, paid: 0, unpaid: 0 },
+    );
+
+    return { date, items, supplierGroups, totals };
   }
 
   async sellerFinance(user: AuthUser): Promise<AnyRecord> {
@@ -1301,6 +1858,31 @@ export class DropshippingService {
     return { suppliersPending, sellersPending, exceptions, disconnected, syncPending };
   }
 
+  async adminPlatformFeeRules(user: AuthUser): Promise<AnyRecord> {
+    this.requireRole(user, ['admin']);
+    return { rules: await this.platformFeeRules() };
+  }
+
+  async updateAdminPlatformFeeRules(user: AuthUser, body: AnyRecord): Promise<AnyRecord> {
+    this.requireRole(user, ['admin']);
+    const rules = this.normalizePlatformFeeRules(body.rules);
+    await this.organizations.findOneAndUpdate(
+      { ownerUserId: 'platform', type: 'admin' },
+      {
+        $setOnInsert: {
+          ownerUserId: 'platform',
+          type: 'admin',
+          name: 'Tecno Plus',
+          status: 'approved',
+        },
+        $set: { 'settings.platformFeeRules': rules },
+      },
+      { upsert: true, new: true },
+    );
+    await this.audit(user.id, 'platform_fee_rules.update', 'organization', 'platform');
+    return { rules };
+  }
+
   private async ensureOrganization(
     user: AuthUser,
     type: 'supplier' | 'seller' | 'admin',
@@ -1385,12 +1967,53 @@ export class DropshippingService {
     };
   }
 
+  private normalizePlatformFeeRules(value: unknown): PlatformFeeRule[] {
+    const rawRules = Array.isArray(value) ? value : [];
+    const rules = rawRules
+      .map((rule) => objectFrom(rule))
+      .map((rule) => ({
+        upTo: moneyAmount(rule.upTo),
+        fee: moneyAmount(rule.fee),
+      }))
+      .filter((rule) => rule.upTo > 0 && rule.fee >= 0)
+      .sort((a, b) => a.upTo - b.upTo);
+    return rules.length ? rules : DEFAULT_PLATFORM_FEE_RULES;
+  }
+
+  private async platformFeeRules(): Promise<PlatformFeeRule[]> {
+    const organization = await this.organizations
+      .findOne({ ownerUserId: 'platform', type: 'admin' }, { settings: 1 })
+      .lean();
+    return this.normalizePlatformFeeRules(objectFrom(organization?.settings).platformFeeRules);
+  }
+
+  private feeFromRules(amount: number, rules: PlatformFeeRule[]): number {
+    const safeAmount = moneyAmount(amount);
+    const match = rules.find((rule) => safeAmount <= rule.upTo) ?? rules[rules.length - 1];
+    return moneyAmount(match?.fee ?? 0);
+  }
+
+  private async platformFeeForAmount(amount: number): Promise<number> {
+    return this.feeFromRules(amount, await this.platformFeeRules());
+  }
+
+  private async platformFeeForItems(items: AnyRecord[]): Promise<number> {
+    const rules = await this.platformFeeRules();
+    return moneyAmount(
+      items.reduce((sum, item) => {
+        const quantity = Math.max(1, numberFrom(item.quantity ?? item.qty, 1));
+        const costPrice = moneyAmount(item.costPrice);
+        return sum + this.feeFromRules(costPrice, rules) * quantity;
+      }, 0),
+    );
+  }
+
   private sellerChargeAmounts(amounts: unknown) {
     const current = objectFrom(amounts);
     const supplierAmount = moneyAmount(current.supplierAmount);
     const saleAmount = moneyAmount(current.saleAmount);
     const platformFee = moneyAmount(
-      current.platformFee ?? this.config.get<number>('asaas.platformFee') ?? 3,
+      current.platformFee ?? this.feeFromRules(supplierAmount, DEFAULT_PLATFORM_FEE_RULES),
     );
     return {
       ...current,
@@ -1531,23 +2154,29 @@ export class DropshippingService {
   }
 
   private calculatePricing(costPrice: number, pricing?: AnyRecord) {
-    const mode = String(pricing?.mode ?? 'percent');
+    const platformFee = moneyAmount(pricing?.platformFee);
+    const mode = String(pricing?.mode ?? (platformFee > 0 ? 'platform_fee' : 'percent'));
     const marketplaceFees = numberFrom(pricing?.marketplaceFees);
     const otherCosts = numberFrom(pricing?.otherCosts);
     const percent = numberFrom(pricing?.profitPercent, 30);
     const fixedProfit = numberFrom(pricing?.fixedProfit);
     const manualPrice = numberFrom(pricing?.manualPrice);
     const profit =
-      mode === 'fixed'
-        ? fixedProfit
-        : mode === 'manual'
-          ? manualPrice - costPrice - marketplaceFees - otherCosts
-          : costPrice * (percent / 100);
+      mode === 'platform_fee'
+        ? 0
+        : mode === 'fixed'
+          ? fixedProfit
+          : mode === 'manual'
+            ? manualPrice - costPrice - platformFee - marketplaceFees - otherCosts
+            : costPrice * (percent / 100);
     const finalPrice =
-      mode === 'manual' ? manualPrice : costPrice + profit + marketplaceFees + otherCosts;
+      mode === 'manual'
+        ? manualPrice
+        : costPrice + platformFee + profit + marketplaceFees + otherCosts;
     return {
       mode,
       costPrice,
+      platformFee,
       profit,
       profitPercent: costPrice ? (profit / costPrice) * 100 : 0,
       marketplaceFees,

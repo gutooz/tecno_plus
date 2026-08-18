@@ -37,17 +37,24 @@ export class MercadoLivreConnectionsService {
   }
 
   /** Gera `state` (CSRF) + par PKCE e salva os dois juntos — o callback só recebe `state`+`code`. */
-  async createState(ownerId: string): Promise<{ state: string; codeChallenge: string }> {
+  async createState(
+    ownerId: string,
+    returnTo = '/integrations',
+  ): Promise<{ state: string; codeChallenge: string }> {
     const state = randomBytes(24).toString('hex');
     const { codeVerifier, codeChallenge } = this.client.generatePkcePair();
-    await this.states.create({ state, ownerId, codeVerifier, createdAt: new Date() });
+    await this.states.create({ state, ownerId, codeVerifier, returnTo, createdAt: new Date() });
     return { state, codeChallenge };
   }
 
   /** Resolve e apaga o state num só passo — cada state só pode ser usado uma vez. */
-  async consumeState(state: string): Promise<{ ownerId: string; codeVerifier: string } | null> {
+  async consumeState(
+    state: string,
+  ): Promise<{ ownerId: string; codeVerifier: string; returnTo: string } | null> {
     const doc = await this.states.findOneAndDelete({ state });
-    return doc ? { ownerId: doc.ownerId, codeVerifier: doc.codeVerifier } : null;
+    return doc
+      ? { ownerId: doc.ownerId, codeVerifier: doc.codeVerifier, returnTo: doc.returnTo }
+      : null;
   }
 
   findByOwner(ownerId: string): Promise<MercadoLivreConnectionDocument | null> {

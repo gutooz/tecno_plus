@@ -20,12 +20,7 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async register(
-    email: string,
-    password: string,
-    name?: string,
-    profileType?: 'supplier' | 'seller',
-  ) {
+  async register(email: string, password: string, name?: string) {
     const exists = await this.users.findOne({ email });
     if (exists) throw new UnauthorizedException('E-mail já cadastrado');
     const passwordHash = await bcrypt.hash(password, 10);
@@ -33,7 +28,7 @@ export class AuthService {
       email,
       passwordHash,
       name: name ?? '',
-      role: profileType ?? 'seller',
+      role: 'seller',
     });
     return this.issueTokens(user);
   }

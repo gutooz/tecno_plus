@@ -16,6 +16,14 @@ interface AlbumReplyBuffer {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface AlbumPhotoBuffer {
+  chatId: number;
+  photos: PendingPhoto[];
+  timer: ReturnType<typeof setTimeout>;
+}
+
+type PhotoIngestOutcome = 'created' | 'duplicate' | 'failed';
+
 type FlowStep =
   'awaiting_mode' | 'awaiting_photo' | 'awaiting_caption' | 'awaiting_price' | 'awaiting_weight';
 
@@ -45,6 +53,8 @@ export class TelegramService {
   /** Fotos de um mesmo álbum (media_group_id) chegam em mensagens separadas —
    * agrupa só pra mandar UMA confirmação, em vez de spamar uma por foto. */
   private readonly albumReplies = new Map<string, AlbumReplyBuffer>();
+  /** Álbuns do Telegram no fluxo admin: várias fotos juntas = um produto com referências. */
+  private readonly albumPhotos = new Map<string, AlbumPhotoBuffer>();
   /** chatId aguardando o PRÓXIMO texto como nova legenda do post social (fluxo "Editar"). */
   private readonly editingCaption = new Map<number, string>();
   /** chatId em cadastro individual guiado (saudação "oi" → lote/individual → foto/legenda/preço/peso). */
@@ -140,13 +150,20 @@ export class TelegramService {
         await this.api.sendMessage(chatId, '✍️ Qual a <b>legenda</b> (nome) do produto?');
         return;
       }
-      await this.ingestPhoto(chatId, photo);
-      this.bumpAlbumReply(chatId, msg.media_group_id, {
-        single:
-          '📸 Foto recebida! Vá no site, em <b>Envio em Lote</b>, pra colocar título e preço.',
-        plural: (n) =>
-          `📸 ${n} fotos recebidas! Vá no site, em <b>Envio em Lote</b>, pra colocar título e preço de cada uma.`,
-      });
+      if (msg.media_group_id) {
+        this.bumpAlbumPhoto(chatId, msg.media_group_id, photo);
+        return;
+      }
+
+      const outcome = await this.ingestPhoto(chatId, photo);
+      if (outcome === 'created') {
+        this.bumpAlbumReply(chatId, msg.media_group_id, {
+          single:
+            '📸 Foto recebida! Já estou criando o produto com IA, tratando as imagens e sugerindo preço. Depois revise em <b>Produtos</b>.',
+          plural: (n) =>
+            `📸 ${n} fotos recebidas! Já estou criando os produtos com IA, tratando as imagens e sugerindo preço. Depois revise em <b>Produtos</b>.`,
+        });
+      }
       return;
     }
 
@@ -331,7 +348,7 @@ export class TelegramService {
       this.flows.delete(chatId);
       await this.api.sendMessage(
         chatId,
-        '🗂 Modo <b>lote</b>. Envie a(s) foto(s) do(s) produto(s) — pode mandar várias de uma vez. Depois vá no site, em <b>Envio em Lote</b>, pra colocar título, preço e peso de cada uma.',
+        '🗂 Modo <b>lote</b>. Envie a(s) foto(s) do(s) produto(s) — pode mandar várias de uma vez. Eu já crio os produtos com IA, trato as imagens e deixo tudo para revisão em <b>Produtos</b>.',
       );
       return;
     }
@@ -350,23 +367,96 @@ export class TelegramService {
     return null;
   }
 
-  /** Baixa a foto e sobe como produto rascunho (status "uploaded") — igual ao
-   * upload pela web. Título/preço ficam para o Envio em Lote no site. */
-  private async ingestPhoto(chatId: number, photo: PendingPhoto): Promise<void> {
-    if (!this.api) return;
+  /** Baixa a foto e cria o produto já no pipeline de IA. */
+  private async ingestPhoto(chatId: number, photo: PendingPhoto): Promise<PhotoIngestOutcome> {
+    if (!this.api) return 'failed';
     try {
       const path = await this.api.getFilePath(photo.fileId);
       const buffer = await this.api.download(path);
       const ext = photo.mimeType.split('/')[1] ?? 'jpg';
-      await this.uploads.ingest(
+      const result = await this.uploads.ingestAutoProcessed(
         this.ownerId,
         { buffer, originalName: `telegram-${Date.now()}.${ext}`, mimeType: photo.mimeType },
-        false,
         'telegram',
       );
+      if (result.duplicate) {
+        await this.api.sendMessage(
+          chatId,
+          `⚠️ Essa imagem já existe no catálogo: <b>${result.existing.name}</b> (${result.existing.internalSku}). Não cadastrei de novo.`,
+        );
+        return 'duplicate';
+      }
+      return 'created';
     } catch (e) {
       this.logger.error(`ingest telegram: ${String(e)}`);
       await this.api.sendMessage(chatId, `❌ Falha ao processar uma foto: ${String(e)}`);
+      return 'failed';
+    }
+  }
+
+  /** Agrupa fotos de um álbum: primeira = produto; demais = etiqueta/preço/referência. */
+  private bumpAlbumPhoto(chatId: number, groupId: string, photo: PendingPhoto): void {
+    const buf: AlbumPhotoBuffer = this.albumPhotos.get(groupId) ?? {
+      chatId,
+      photos: [],
+      timer: setTimeout(() => {}, 0),
+    };
+    clearTimeout(buf.timer);
+    buf.photos.push(photo);
+    buf.timer = setTimeout(() => {
+      const current = this.albumPhotos.get(groupId);
+      this.albumPhotos.delete(groupId);
+      if (current) void this.ingestPhotoAlbum(current.chatId, current.photos);
+    }, TelegramService.ALBUM_DEBOUNCE_MS);
+    this.albumPhotos.set(groupId, buf);
+  }
+
+  private async ingestPhotoAlbum(
+    chatId: number,
+    photos: PendingPhoto[],
+  ): Promise<PhotoIngestOutcome> {
+    if (!this.api || !photos.length) return 'failed';
+    if (photos.length === 1) return this.ingestPhoto(chatId, photos[0]);
+
+    try {
+      const files = await Promise.all(
+        photos.map(async (photo, index) => {
+          const path = await this.api!.getFilePath(photo.fileId);
+          const buffer = await this.api!.download(path);
+          const ext = photo.mimeType.split('/')[1] ?? 'jpg';
+          return {
+            buffer,
+            originalName: `telegram-album-${Date.now()}-${index + 1}.${ext}`,
+            mimeType: photo.mimeType,
+          };
+        }),
+      );
+
+      const [main, ...references] = files;
+      const result = await this.uploads.ingestAutoProcessedWithReferences(
+        this.ownerId,
+        main,
+        references,
+        'telegram',
+      );
+
+      if (result.duplicate) {
+        await this.api.sendMessage(
+          chatId,
+          `⚠️ Esse produto/imagem já existe no catálogo: <b>${result.existing.name}</b> (${result.existing.internalSku}). Não cadastrei de novo.`,
+        );
+        return 'duplicate';
+      }
+
+      await this.api.sendMessage(
+        chatId,
+        `📸 ${photos.length} fotos recebidas para o mesmo produto. Usei a primeira como foto principal e as outras como referência de preço/etiqueta. Já estou criando com IA; revise em <b>Produtos</b>.`,
+      );
+      return 'created';
+    } catch (e) {
+      this.logger.error(`ingest telegram album: ${String(e)}`);
+      await this.api.sendMessage(chatId, `❌ Falha ao processar o álbum: ${String(e)}`);
+      return 'failed';
     }
   }
 
@@ -468,7 +558,7 @@ export class TelegramService {
         '',
         'Mande um <b>oi</b> pra escolher o modo de cadastro:',
         '',
-        '🗂 <b>Em lote</b> — envie a(s) foto(s) (pode ser várias de uma vez) e depois vá no site, em <b>Envio em Lote</b>, colocar título, preço e peso de cada uma.',
+        '🗂 <b>Em lote</b> — envie a(s) foto(s) (pode ser várias de uma vez). Eu crio os produtos com IA, trato as imagens, busco/sugiro preço e deixo para revisar em Produtos.',
         '🖼 <b>Individual</b> — o bot pergunta a foto, a legenda, o preço e o peso, e já cadastra o produto. A IA trata a foto e gera a descrição automaticamente.',
       ].join('\n'),
     );

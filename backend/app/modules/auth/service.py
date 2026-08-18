@@ -30,7 +30,6 @@ class AuthService:
         email: str,
         password: str,
         name: str | None,
-        profile_type: str | None,
     ) -> TokenResponse:
         normalized_email = email.lower().strip()
         if await self.users.get_by_email(normalized_email):
@@ -41,7 +40,7 @@ class AuthService:
                 email=normalized_email,
                 password_hash=hash_password(password),
                 name=name or "",
-                role=profile_type or "seller",
+                role="seller",
             )
         except DuplicateKeyError as exc:
             raise EmailAlreadyRegisteredError("E-mail já cadastrado") from exc

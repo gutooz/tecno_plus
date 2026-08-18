@@ -36,6 +36,8 @@ export interface AIVisionRequest {
   prompt: string;
   /** Imagem como URL pública OU data URL base64. */
   imageUrl: string;
+  /** Imagens extras de referência (ex.: etiqueta/preço em outra foto). */
+  imageUrls?: string[];
   model?: string;
   json?: boolean;
   maxTokens?: number;

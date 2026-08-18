@@ -50,10 +50,14 @@ export class PipelineOrchestrator {
   async handleVision(data: PipelineJobData) {
     await this.withLog('vision', data.productId, async () => {
       const product = await this.load(data.productId);
-      const originalUrl = (product.images as { original?: string }).original;
+      const productImages = product.images as { original?: string; references?: string[] };
+      const originalUrl = productImages.original;
       if (!originalUrl) throw new Error('Produto sem imagem original.');
 
-      const out = await this.vision.run(originalUrl);
+      const out = await this.vision.run(
+        originalUrl,
+        Array.isArray(productImages.references) ? productImages.references : [],
+      );
 
       // Preserva TÍTULO e PREÇO informados pelo operador (fluxo Telegram):
       // a visão enriquece marca/categoria, mas não sobrescreve o que o humano deu.
@@ -163,10 +167,17 @@ export class PipelineOrchestrator {
   async handlePricing(data: PipelineJobData) {
     await this.withLog('pricing', data.productId, async () => {
       const product = await this.load(data.productId);
-      const purchase =
-        (product.vision as { labelPrice?: number }).labelPrice ??
-        (product.market as { minPrice?: number })?.minPrice ??
-        0;
+      const decision = resolvePricingDecision(product);
+      if (decision.missingPurchasePrice) {
+        await this.products.updateOne(
+          { _id: data.productId },
+          { $set: { pricing: null, status: ProductStatus.NEEDS_REVIEW } },
+        );
+        this.logger.warn(
+          `Preço pago ausente p/ ${product.internalSku} — fica em revisão, sem publicar.`,
+        );
+        return undefined;
+      }
 
       // Preserva o PREÇO DE VENDA informado pelo operador (fluxo Envio em Lote):
       // se ele já digitou um preço, mantemos e só derivamos lucro/margem/ROI.
@@ -174,15 +185,18 @@ export class PipelineOrchestrator {
       const manualSale = (product.pricing as { suggestedPrice?: number })?.suggestedPrice;
       const result =
         manualSale && manualSale > 0
-          ? this.pricing.withSalePrice(purchase, manualSale)
-          : this.pricing.run(purchase, (product.market as never) ?? undefined);
+          ? this.pricing.withSalePrice(decision.purchasePrice, manualSale)
+          : this.pricing.run(decision.purchasePrice, (product.market as never) ?? undefined);
 
       await this.products.updateOne(
         { _id: data.productId },
         { $set: { pricing: result, status: ProductStatus.READY } },
       );
-      // No MVP publicamos automaticamente na loja; ajuste para exigir revisão se preferir.
-      await this.queue.enqueue(QueueName.PUBLISH, data);
+      if (decision.shouldAutoPublish) {
+        // No MVP uploads web ainda publicam automaticamente na loja; Telegram
+        // fica para revisão manual porque preço pago pode estar em outra foto.
+        await this.queue.enqueue(QueueName.PUBLISH, data);
+      }
       return undefined;
     });
   }
@@ -248,4 +262,34 @@ export class PipelineOrchestrator {
       throw err; // deixa o BullMQ aplicar retry/backoff
     }
   }
+}
+
+export interface PricingDecision {
+  purchasePrice: number;
+  missingPurchasePrice: boolean;
+  shouldAutoPublish: boolean;
+}
+
+export function resolvePricingDecision(product: {
+  source?: string;
+  vision?: Record<string, unknown>;
+  pricing?: Record<string, unknown> | null;
+  market?: Record<string, unknown> | null;
+}): PricingDecision {
+  const isTelegram = product.source === 'telegram';
+  const fromVision = positiveNumber(product.vision?.labelPrice);
+  const fromManualPricing = positiveNumber(product.pricing?.purchasePrice);
+  const fromMarket = positiveNumber(product.market?.minPrice);
+
+  const purchasePrice = fromVision ?? fromManualPricing ?? (isTelegram ? undefined : fromMarket);
+
+  return {
+    purchasePrice: purchasePrice ?? 0,
+    missingPurchasePrice: purchasePrice == null,
+    shouldAutoPublish: !isTelegram,
+  };
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }

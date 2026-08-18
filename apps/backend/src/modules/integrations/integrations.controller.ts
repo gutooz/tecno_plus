@@ -69,8 +69,9 @@ export class IntegrationsController {
             mlUserId: mercadoLivre.mlUserId,
             nickname: mercadoLivre.nickname,
             expiresAt: mercadoLivre.expiresAt,
+            config: this.mlClient.publicConfig(),
           }
-        : { connected: false, configured: this.mlClient.configured },
+        : { connected: false, ...this.mlClient.publicConfig() },
     };
   }
 
@@ -208,13 +209,16 @@ export class IntegrationsController {
   @Get('mercado-livre/connect')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  async connectMercadoLivre(@CurrentUser() user: AuthUser) {
+  async connectMercadoLivre(@CurrentUser() user: AuthUser, @Query('returnTo') returnTo?: string) {
     if (!this.mlClient.configured) {
       throw new BadRequestException(
         'Integração Mercado Livre não configurada no servidor (defina MERCADO_LIVRE_CLIENT_ID/MERCADO_LIVRE_CLIENT_SECRET/MERCADO_LIVRE_REDIRECT_URI).',
       );
     }
-    const { state, codeChallenge } = await this.mlConnections.createState(user.id);
+    const { state, codeChallenge } = await this.mlConnections.createState(
+      user.id,
+      this.marketplaceReturnTo(returnTo),
+    );
     return { url: this.mlClient.buildAuthorizationUrl(state, codeChallenge) };
   }
 
@@ -232,8 +236,10 @@ export class IntegrationsController {
     @Res() res: Response,
   ) {
     const frontendUrl = (this.config.get<string[]>('security.corsOrigin') ?? [])[0] ?? '/';
+    let returnTo = '/integrations';
     try {
       const consumed = state ? await this.mlConnections.consumeState(state) : null;
+      returnTo = this.marketplaceReturnTo(consumed?.returnTo);
       if (!consumed || !code)
         throw new Error('Parâmetros de callback inválidos ou state expirado.');
 
@@ -251,10 +257,10 @@ export class IntegrationsController {
         );
       }
 
-      res.redirect(`${frontendUrl}/integrations?ml=connected`);
+      res.redirect(this.frontendRedirect(frontendUrl, returnTo, { ml: 'connected' }));
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Falha ao conectar Mercado Livre';
-      res.redirect(`${frontendUrl}/integrations?ml=error&message=${encodeURIComponent(message)}`);
+      res.redirect(this.frontendRedirect(frontendUrl, returnTo, { ml: 'error', message }));
     }
   }
 
@@ -287,8 +293,14 @@ export class IntegrationsController {
   }
 
   private shopeeReturnTo(returnTo?: string | null) {
+    if (returnTo?.startsWith('/admin/shopee')) return '/admin/shopee';
     if (returnTo?.startsWith('/seller/store')) return '/seller/store';
     if (returnTo?.startsWith('/seller')) return '/seller';
+    return '/integrations';
+  }
+
+  private marketplaceReturnTo(returnTo?: string | null) {
+    if (returnTo?.startsWith('/admin/mercado-livre')) return '/admin/mercado-livre';
     return '/integrations';
   }
 

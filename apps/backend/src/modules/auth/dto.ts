@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -13,9 +13,7 @@ export class RegisterDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
-  @IsIn(['supplier', 'seller'])
-  profileType?: 'supplier' | 'seller';
+  profileType?: 'seller';
 }
 
 export class LoginDto {

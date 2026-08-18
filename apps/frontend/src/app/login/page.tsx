@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, Eye, EyeOff, Lock, Mail, Sparkles, Store, Truck, Zap } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Lock, Mail, Sparkles, Store, Zap } from 'lucide-react';
 import {
   api,
   getToken,
@@ -16,7 +16,6 @@ import {
 import { Button, Checkbox, Input } from '@/components/ui';
 
 type Mode = 'login' | 'register';
-type ProfileType = 'supplier' | 'seller';
 
 const HIGHLIGHTS = [
   { icon: Zap, value: '10x mais rápido', label: 'Do upload à publicação' },
@@ -40,7 +39,6 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
-  const [profileType, setProfileType] = useState<ProfileType>('seller');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
@@ -70,7 +68,7 @@ function LoginForm() {
         email,
         name,
         password,
-        profileType: mode === 'register' ? profileType : undefined,
+        profileType: mode === 'register' ? 'seller' : undefined,
       });
       setToken(res.accessToken, remember);
       setRefreshToken(res.refreshToken, remember);
@@ -200,30 +198,10 @@ function LoginForm() {
           <form onSubmit={submit} noValidate className="flex flex-col gap-4">
             {mode === 'register' && (
               <div className="grid gap-2">
-                <button
-                  type="button"
-                  onClick={() => setProfileType('seller')}
-                  className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                    profileType === 'seller'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-surface text-muted hover:bg-surface-2'
-                  }`}
-                >
+                <div className="flex items-center gap-3 rounded-xl border border-primary bg-primary/10 px-3 py-2.5 text-left text-sm text-primary">
                   <Store size={16} />
-                  Quero criar uma loja como vendedor
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProfileType('supplier')}
-                  className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                    profileType === 'supplier'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-surface text-muted hover:bg-surface-2'
-                  }`}
-                >
-                  <Truck size={16} />
-                  Quero vender produtos como fornecedor
-                </button>
+                  Cadastro como vendedor
+                </div>
                 <Input
                   id="name"
                   placeholder="Nome do responsável"

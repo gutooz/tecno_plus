@@ -45,9 +45,24 @@ export class PublishService {
     ids: string[],
     channel: MarketplaceChannel = MarketplaceChannel.WEBSITE,
   ) {
+    const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
     const results = await Promise.all(
-      ids.map(async (id) => {
+      uniqueIds.map(async (id) => {
         try {
+          if (channel === MarketplaceChannel.SHOPEE) {
+            const existing = await this.products.collection.findOne(
+              {
+                ownerId,
+                _id: { $in: productIdValues(id) },
+                $or: [
+                  { 'externalIds.shopee': { $exists: true, $nin: ['', null] } },
+                  { publishedChannels: MarketplaceChannel.SHOPEE },
+                ],
+              } as never,
+              { projection: { _id: 1 } },
+            );
+            if (existing) return { id, ok: true as const, skipped: true as const };
+          }
           await this.publish(ownerId, id, channel);
           return { id, ok: true as const };
         } catch (e) {
@@ -58,7 +73,9 @@ export class PublishService {
     );
     return {
       total: results.length,
-      published: results.filter((r) => r.ok).length,
+      published: results.filter((r) => r.ok && !('skipped' in r)).length,
+      skippedExisting: results.filter((r) => r.ok && 'skipped' in r).length,
+      failed: results.filter((r) => !r.ok).length,
       results,
     };
   }
