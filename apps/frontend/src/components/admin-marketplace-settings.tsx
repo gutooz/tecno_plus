@@ -6,23 +6,31 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertCircle,
+  Box,
   CheckCircle2,
   ClipboardCheck,
+  Eye,
   ExternalLink,
   FileCog,
   Globe2,
   KeyRound,
   Link2,
+  Pencil,
+  PackageOpen,
   RefreshCw,
+  Save,
+  Search,
   ShoppingBag,
   Store,
+  Trash2,
   Unplug,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, formatBRL } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Button, Card, StatusPill } from '@/components/ui';
+import { Button, Card, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
 
 type MarketplaceKey = 'shopee' | 'mercadoLivre';
 
@@ -73,6 +81,32 @@ interface IntegrationsData {
 interface ShopeeOrderSummary {
   order_sn?: string;
   booking_sn?: string;
+}
+
+interface ShopeeStoreProduct {
+  itemId: string;
+  itemName: string;
+  sku?: string;
+  status: string;
+  categoryId?: number;
+  categoryName?: string;
+  imageUrl?: string;
+  price?: number;
+  stock?: number;
+  weight?: number;
+  description?: string;
+  createTime?: number;
+  updateTime?: number;
+}
+
+interface ShopeeStoreProductsResponse {
+  items: ShopeeStoreProduct[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  hasNextPage: boolean;
+  status: string;
 }
 
 interface MarketplaceSettingsProps {
@@ -263,7 +297,7 @@ function MarketplaceSettingsContent({ marketplace }: MarketplaceSettingsProps) {
     : 'Sem token ativo';
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-7xl">
       <PageHeader title={page.title} subtitle={page.subtitle} />
 
       <AnimatePresence initial={false}>
@@ -436,6 +470,13 @@ function MarketplaceSettingsContent({ marketplace }: MarketplaceSettingsProps) {
         )}
       </Card>
 
+      {marketplace === 'shopee' && (
+        <ShopeeStoreProducts
+          connected={page.connected}
+          onError={(err) => setBanner(toErrorBanner(err))}
+        />
+      )}
+
       {marketplace === 'shopee' && orders && (
         <Card className="mb-4">
           <p className="font-semibold">Pedidos recentes da Shopee</p>
@@ -472,6 +513,493 @@ function MarketplaceSettingsContent({ marketplace }: MarketplaceSettingsProps) {
   );
 }
 
+function ShopeeStoreProducts({
+  connected,
+  onError,
+}: {
+  connected: boolean;
+  onError: (err: unknown) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('NORMAL');
+  const [editing, setEditing] = useState<ShopeeStoreProduct | null>(null);
+  const [deleting, setDeleting] = useState<ShopeeStoreProduct | null>(null);
+  const [draft, setDraft] = useState({
+    itemName: '',
+    description: '',
+    price: '',
+    stock: '',
+    weight: '',
+  });
+
+  const query = useQuery({
+    queryKey: ['shopee-store-products', page, status, search],
+    enabled: connected,
+    queryFn: () =>
+      api.get<ShopeeStoreProductsResponse>(
+        `/integrations/shopee/products?${new URLSearchParams({
+          page: String(page),
+          limit: '20',
+          status,
+          search,
+        }).toString()}`,
+      ),
+  });
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (!editing) throw new Error('Nenhum produto selecionado.');
+      return api.patch<{ item?: ShopeeStoreProduct }>(
+        `/integrations/shopee/products/${editing.itemId}`,
+        {
+          itemName: draft.itemName,
+          description: draft.description,
+          price: draft.price ? Number(draft.price) : undefined,
+          stock: draft.stock ? Number(draft.stock) : undefined,
+          weight: draft.weight ? Number(draft.weight) : undefined,
+        },
+      );
+    },
+    onSuccess: (res) => {
+      setEditing(res.item ?? null);
+      queryClient.invalidateQueries({ queryKey: ['shopee-store-products'] });
+    },
+    onError,
+  });
+
+  const listing = useMutation({
+    mutationFn: ({ itemId, listed }: { itemId: string; listed: boolean }) =>
+      api.post(`/integrations/shopee/products/${itemId}/listing`, { listed }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shopee-store-products'] }),
+    onError,
+  });
+
+  const remove = useMutation({
+    mutationFn: (itemId: string) => api.del(`/integrations/shopee/products/${itemId}`),
+    onSuccess: () => {
+      setEditing(null);
+      setDeleting(null);
+      queryClient.invalidateQueries({ queryKey: ['shopee-store-products'] });
+    },
+    onError,
+  });
+
+  const items = query.data?.items ?? [];
+  const isEmpty = connected && !query.isLoading && !items.length;
+
+  function openEditor(item: ShopeeStoreProduct) {
+    setEditing(item);
+    setDraft({
+      itemName: item.itemName,
+      description: item.description ?? '',
+      price: item.price != null ? String(item.price) : '',
+      stock: item.stock != null ? String(item.stock) : '',
+      weight: item.weight != null ? String(item.weight) : '',
+    });
+  }
+
+  return (
+    <>
+      <Card className="mb-4 overflow-hidden p-0">
+        <div className="border-b border-border px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Box size={18} className="text-primary" />
+                <p className="font-semibold">Produtos cadastrados na Shopee</p>
+              </div>
+              <p className="mt-1 text-sm text-muted">
+                Visualize e gerencie os anuncios que ja existem na loja conectada.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={status}
+                onChange={(event) => {
+                  setStatus(event.target.value);
+                  setPage(1);
+                }}
+                className="h-10 rounded-xl border border-border bg-surface px-3 text-sm text-fg outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+              >
+                <option value="NORMAL">Publicados</option>
+                <option value="UNLIST">Ocultos</option>
+                <option value="REVIEWING">Em revisao</option>
+                <option value="BANNED">Bloqueados</option>
+                <option value="SELLER_DELETE">Excluidos</option>
+              </select>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!connected}
+                loading={query.isFetching}
+                onClick={() => query.refetch()}
+              >
+                <RefreshCw size={15} /> Atualizar
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 max-w-md">
+            <Input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              disabled={!connected}
+              leadingIcon={<Search size={16} />}
+              placeholder="Pesquisar por titulo, SKU ou ID..."
+            />
+          </div>
+        </div>
+
+        {!connected ? (
+          <div className="flex min-h-48 flex-col items-center justify-center px-5 py-10 text-center">
+            <PackageOpen size={34} className="text-faint" />
+            <p className="mt-3 font-semibold">Conecte a Shopee para ver o catalogo da loja</p>
+            <p className="mt-1 max-w-md text-sm text-muted">
+              Assim que a autorizacao estiver ativa, os produtos cadastrados aparecem aqui.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="md:hidden">
+              {query.isLoading &&
+                Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="border-b border-border px-4 py-3">
+                    <Skeleton className="h-24 rounded-2xl" />
+                  </div>
+                ))}
+              {items.map((item) => (
+                <div key={item.itemId} className="border-b border-border px-4 py-3 last:border-b-0">
+                  <div className="flex gap-3">
+                    <ProductThumb item={item} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{item.itemName}</p>
+                          <p className="truncate text-xs text-muted">
+                            SKU {item.sku || 'sem SKU'} · ID {item.itemId}
+                          </p>
+                        </div>
+                        <StatusPill status={storeStatus(item.status)} />
+                      </div>
+                      <div className="nums mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                        <span>{formatBRL(item.price)}</span>
+                        <span>Estoque {item.stock ?? '-'}</span>
+                        <span>{item.categoryName || categoryLabel(item)}</span>
+                      </div>
+                      <ProductActions
+                        item={item}
+                        listingPending={listing.isPending}
+                        deletePending={remove.isPending}
+                        onEdit={openEditor}
+                        onListing={(listed) => listing.mutate({ itemId: item.itemId, listed })}
+                        onDelete={() => setDeleting(item)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {isEmpty && <ShopeeProductsEmpty />}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-surface-2/80 text-left text-[11px] uppercase tracking-wider text-faint">
+                    <th className="px-4 py-3 font-semibold">Produto</th>
+                    <th className="px-3 py-3 font-semibold">Categoria</th>
+                    <th className="px-3 py-3 font-semibold">Preco</th>
+                    <th className="px-3 py-3 font-semibold">Estoque</th>
+                    <th className="px-3 py-3 font-semibold">Status</th>
+                    <th className="px-3 py-3 font-semibold">Atualizado</th>
+                    <th className="px-4 py-3 text-right font-semibold">Acoes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {query.isLoading &&
+                    Array.from({ length: 6 }).map((_, index) => (
+                      <tr key={index} className="border-b border-border/60">
+                        <td colSpan={7} className="px-4 py-3">
+                          <Skeleton className="h-12 w-full rounded-xl" />
+                        </td>
+                      </tr>
+                    ))}
+                  {items.map((item) => (
+                    <tr
+                      key={item.itemId}
+                      className="border-b border-border/60 transition-colors hover:bg-surface-2/45"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex min-w-[260px] items-center gap-3">
+                          <ProductThumb item={item} />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{item.itemName}</p>
+                            <p className="truncate text-xs text-muted">
+                              SKU {item.sku || 'sem SKU'} · ID {item.itemId}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-muted">
+                        {item.categoryName || categoryLabel(item)}
+                      </td>
+                      <td className="nums px-3 py-3 font-medium">{formatBRL(item.price)}</td>
+                      <td className="nums px-3 py-3 text-muted">{item.stock ?? '-'}</td>
+                      <td className="px-3 py-3">
+                        <StatusPill status={storeStatus(item.status)} />
+                      </td>
+                      <td className="nums px-3 py-3 text-muted">
+                        {formatUnixDate(item.updateTime)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <ProductActions
+                          item={item}
+                          listingPending={listing.isPending}
+                          deletePending={remove.isPending}
+                          onEdit={openEditor}
+                          onListing={(listed) => listing.mutate({ itemId: item.itemId, listed })}
+                          onDelete={() => setDeleting(item)}
+                          align="end"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                  {isEmpty && (
+                    <tr>
+                      <td colSpan={7}>
+                        <ShopeeProductsEmpty />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {connected && query.data && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-sm text-muted">
+            <span>
+              {query.data.total} produto(s) · pagina {query.data.page} de {query.data.pages}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={page <= 1 || query.isFetching}
+                onClick={() => setPage((current) => Math.max(current - 1, 1))}
+              >
+                Anterior
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!query.data.hasNextPage || query.isFetching}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                Proxima
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+              <div className="min-w-0">
+                <p className="font-semibold">Editar produto Shopee</p>
+                <p className="truncate text-sm text-muted">ID {editing.itemId}</p>
+              </div>
+              <IconButton aria-label="Fechar" onClick={() => setEditing(null)}>
+                <X size={18} />
+              </IconButton>
+            </div>
+
+            <div className="max-h-[72vh] overflow-y-auto px-5 py-4">
+              <div className="grid gap-4 sm:grid-cols-[88px_1fr]">
+                <ProductThumb item={editing} large />
+                <div className="grid gap-3">
+                  <Input
+                    value={draft.itemName}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, itemName: event.target.value }))
+                    }
+                    placeholder="Titulo"
+                  />
+                  <textarea
+                    value={draft.description}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, description: event.target.value }))
+                    }
+                    rows={5}
+                    className="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-sm text-fg outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/15"
+                    placeholder="Descricao"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <Input
+                  value={draft.price}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, price: event.target.value }))
+                  }
+                  inputMode="decimal"
+                  placeholder="Preco"
+                />
+                <Input
+                  value={draft.stock}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, stock: event.target.value }))
+                  }
+                  inputMode="numeric"
+                  placeholder="Estoque"
+                />
+                <Input
+                  value={draft.weight}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, weight: event.target.value }))
+                  }
+                  inputMode="decimal"
+                  placeholder="Peso kg"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-4">
+              <Button variant="danger" size="sm" onClick={() => setDeleting(editing)}>
+                <Trash2 size={15} /> Excluir
+              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}>
+                  <Save size={15} /> Salvar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger/12 text-danger">
+                <Trash2 size={18} />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">Excluir produto da Shopee?</p>
+                <p className="mt-1 text-sm text-muted">
+                  {deleting.itemName} sera removido da loja conectada.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setDeleting(null)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                loading={remove.isPending}
+                onClick={() => remove.mutate(deleting.itemId)}
+              >
+                Excluir
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ProductThumb({ item, large = false }: { item: ShopeeStoreProduct; large?: boolean }) {
+  return (
+    <div
+      className={cn(
+        'shrink-0 overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border/60',
+        large ? 'h-20 w-20' : 'h-12 w-12',
+      )}
+    >
+      {item.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-faint">
+          <PackageOpen size={large ? 28 : 18} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductActions({
+  item,
+  listingPending,
+  deletePending,
+  onEdit,
+  onListing,
+  onDelete,
+  align = 'start',
+}: {
+  item: ShopeeStoreProduct;
+  listingPending: boolean;
+  deletePending: boolean;
+  onEdit: (item: ShopeeStoreProduct) => void;
+  onListing: (listed: boolean) => void;
+  onDelete: () => void;
+  align?: 'start' | 'end';
+}) {
+  const isListed = item.status === 'NORMAL';
+  return (
+    <div className={cn('mt-2 flex items-center gap-0.5', align === 'end' && 'justify-end')}>
+      <IconButton size="sm" aria-label="Visualizar e editar" onClick={() => onEdit(item)}>
+        {isListed ? <Pencil size={15} /> : <Eye size={15} />}
+      </IconButton>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 px-2.5 text-xs"
+        disabled={listingPending}
+        onClick={() => onListing(!isListed)}
+      >
+        {isListed ? 'Ocultar' : 'Publicar'}
+      </Button>
+      <IconButton
+        size="sm"
+        tone="danger"
+        disabled={deletePending}
+        aria-label="Excluir"
+        onClick={onDelete}
+      >
+        <Trash2 size={15} />
+      </IconButton>
+    </div>
+  );
+}
+
+function ShopeeProductsEmpty() {
+  return (
+    <div className="flex min-h-40 flex-col items-center justify-center px-5 py-8 text-center">
+      <PackageOpen size={32} className="text-faint" />
+      <p className="mt-3 font-semibold">Nenhum produto encontrado</p>
+      <p className="mt-1 max-w-md text-sm text-muted">
+        Troque o filtro de status ou atualize para consultar a loja novamente.
+      </p>
+    </div>
+  );
+}
+
 function StatusRow({
   icon: Icon,
   label,
@@ -492,6 +1020,27 @@ function StatusRow({
       </div>
     </div>
   );
+}
+
+function storeStatus(status: string) {
+  const normalized = status.toUpperCase();
+  if (normalized === 'NORMAL') return 'published';
+  if (normalized === 'UNLIST') return 'hidden';
+  if (normalized === 'REVIEWING') return 'pending_review';
+  if (normalized === 'BANNED') return 'failed';
+  if (normalized.includes('DELETE')) return 'archived';
+  return status.toLowerCase();
+}
+
+function categoryLabel(item: ShopeeStoreProduct) {
+  return item.categoryId ? `Categoria ${item.categoryId}` : '-';
+}
+
+function formatUnixDate(value?: number) {
+  if (!value) return '-';
+  const date = new Date(value * 1000);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('pt-BR');
 }
 
 function toErrorBanner(err: unknown) {

@@ -2,9 +2,12 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Logger,
+  Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -17,7 +20,7 @@ import { Model } from 'mongoose';
 import type { Response } from 'express';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
-import { ShopeeApiClient } from './shopee-api.client';
+import { ShopeeApiClient, ShopeeStoreProductPatch } from './shopee-api.client';
 import { ShopeeConnectionsService } from './shopee-connections.service';
 import { MercadoLivreApiClient } from './mercado-livre-api.client';
 import { MercadoLivreConnectionsService } from './mercado-livre-connections.service';
@@ -161,6 +164,113 @@ export class IntegrationsController {
     return { orders };
   }
 
+  @Get('shopee/products')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async shopeeProducts(
+    @CurrentUser() user: AuthUser,
+    @Query('page') pageParam?: string,
+    @Query('limit') limitParam?: string,
+    @Query('status') statusParam?: string,
+    @Query('search') search?: string,
+  ) {
+    const auth = await this.connections.getValidAccessToken(user.id);
+    if (!auth) throw new BadRequestException('Nenhuma loja Shopee conectada.');
+    const page = Math.max(Number(pageParam) || 1, 1);
+    const limit = Math.min(Math.max(Number(limitParam) || 20, 1), 100);
+    const status = this.shopeeProductStatus(statusParam);
+    const result = await this.shopeeClient.getStoreProducts(auth.accessToken, auth.shopId, {
+      offset: (page - 1) * limit,
+      pageSize: limit,
+      status,
+    });
+    const normalizedSearch = search?.trim().toLowerCase();
+    const items = normalizedSearch
+      ? result.items.filter((item) =>
+          [item.itemName, item.sku, item.itemId, item.categoryName]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(normalizedSearch)),
+        )
+      : result.items;
+    await this.connections.recordSync(auth.shopId);
+    return {
+      items,
+      total: normalizedSearch ? items.length : result.total,
+      page,
+      limit,
+      pages: Math.max(Math.ceil((normalizedSearch ? items.length : result.total) / limit), 1),
+      hasNextPage: normalizedSearch ? false : result.hasNextPage,
+      status,
+    };
+  }
+
+  @Get('shopee/products/:itemId')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async shopeeProduct(@CurrentUser() user: AuthUser, @Param('itemId') itemId: string) {
+    const auth = await this.connections.getValidAccessToken(user.id);
+    if (!auth) throw new BadRequestException('Nenhuma loja Shopee conectada.');
+    const [item] = await this.shopeeClient.getStoreProductBaseInfo(auth.accessToken, auth.shopId, [
+      Number(itemId),
+    ]);
+    if (!item?.itemId) throw new BadRequestException('Produto Shopee nao encontrado.');
+    await this.connections.recordSync(auth.shopId);
+    return { item };
+  }
+
+  @Patch('shopee/products/:itemId')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async updateShopeeProduct(
+    @CurrentUser() user: AuthUser,
+    @Param('itemId') itemId: string,
+    @Body() body: ShopeeStoreProductPatch,
+  ) {
+    const auth = await this.connections.getValidAccessToken(user.id);
+    if (!auth) throw new BadRequestException('Nenhuma loja Shopee conectada.');
+    const patch = this.cleanShopeeProductPatch(body);
+    if (!Object.keys(patch).length) {
+      throw new BadRequestException('Informe ao menos um campo para atualizar.');
+    }
+    await this.shopeeClient.updateStoreProduct(auth.accessToken, auth.shopId, itemId, patch);
+    const [item] = await this.shopeeClient.getStoreProductBaseInfo(auth.accessToken, auth.shopId, [
+      Number(itemId),
+    ]);
+    await this.connections.recordSync(auth.shopId);
+    return { ok: true, item };
+  }
+
+  @Post('shopee/products/:itemId/listing')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async setShopeeProductListing(
+    @CurrentUser() user: AuthUser,
+    @Param('itemId') itemId: string,
+    @Body('listed') listed?: boolean,
+  ) {
+    const auth = await this.connections.getValidAccessToken(user.id);
+    if (!auth) throw new BadRequestException('Nenhuma loja Shopee conectada.');
+    await this.shopeeClient.setStoreProductListed(
+      auth.accessToken,
+      auth.shopId,
+      itemId,
+      Boolean(listed),
+    );
+    await this.connections.recordSync(auth.shopId);
+    return { ok: true };
+  }
+
+  @Delete('shopee/products/:itemId')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async deleteShopeeProduct(@CurrentUser() user: AuthUser, @Param('itemId') itemId: string) {
+    const auth = await this.connections.getValidAccessToken(user.id);
+    if (!auth) throw new BadRequestException('Nenhuma loja Shopee conectada.');
+    await this.shopeeClient.deleteStoreProduct(auth.accessToken, auth.shopId, itemId);
+    await this.connections.recordSync(auth.shopId);
+    return { ok: true };
+  }
+
   @Get('shopee/config')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -302,6 +412,38 @@ export class IntegrationsController {
   private marketplaceReturnTo(returnTo?: string | null) {
     if (returnTo?.startsWith('/admin/mercado-livre')) return '/admin/mercado-livre';
     return '/integrations';
+  }
+
+  private shopeeProductStatus(status?: string | null) {
+    const allowed = ['NORMAL', 'BANNED', 'UNLIST', 'REVIEWING', 'SELLER_DELETE', 'SHOPEE_DELETE'];
+    const normalized = String(status || 'NORMAL').toUpperCase();
+    return allowed.includes(normalized) ? normalized : 'NORMAL';
+  }
+
+  private cleanShopeeProductPatch(body: ShopeeStoreProductPatch): ShopeeStoreProductPatch {
+    const patch: ShopeeStoreProductPatch = {};
+    if (typeof body.itemName === 'string' && body.itemName.trim()) {
+      patch.itemName = body.itemName.trim();
+    }
+    if (typeof body.description === 'string' && body.description.trim()) {
+      patch.description = body.description.trim();
+    }
+    if (body.price !== undefined) {
+      const price = Number(body.price);
+      if (!Number.isFinite(price) || price <= 0) throw new BadRequestException('Preco invalido.');
+      patch.price = price;
+    }
+    if (body.stock !== undefined) {
+      const stock = Number(body.stock);
+      if (!Number.isFinite(stock) || stock < 0) throw new BadRequestException('Estoque invalido.');
+      patch.stock = Math.floor(stock);
+    }
+    if (body.weight !== undefined) {
+      const weight = Number(body.weight);
+      if (!Number.isFinite(weight) || weight <= 0) throw new BadRequestException('Peso invalido.');
+      patch.weight = weight;
+    }
+    return patch;
   }
 
   private frontendRedirect(frontendUrl: string, path: string, params: Record<string, string>) {

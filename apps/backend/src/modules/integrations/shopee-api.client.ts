@@ -18,6 +18,30 @@ export interface ShopeeCategoryApiItem {
   has_children?: boolean;
 }
 
+export interface ShopeeStoreProduct {
+  itemId: string;
+  itemName: string;
+  sku?: string;
+  status: string;
+  categoryId?: number;
+  categoryName?: string;
+  imageUrl?: string;
+  price?: number;
+  stock?: number;
+  weight?: number;
+  description?: string;
+  createTime?: number;
+  updateTime?: number;
+}
+
+export interface ShopeeStoreProductPatch {
+  itemName?: string;
+  description?: string;
+  price?: number;
+  stock?: number;
+  weight?: number;
+}
+
 type ShopeeApiResponse = Record<string, unknown> & { error?: string; message?: string };
 
 /**
@@ -228,6 +252,115 @@ export class ShopeeApiClient {
     return json.response?.category_list ?? [];
   }
 
+  async getStoreProducts(
+    accessToken: string,
+    shopId: string,
+    options: { offset?: number; pageSize?: number; status?: string } = {},
+  ): Promise<{ items: ShopeeStoreProduct[]; total: number; hasNextPage: boolean }> {
+    const pageSize = Math.min(Math.max(options.pageSize ?? 20, 1), 100);
+    const status = options.status || 'NORMAL';
+    const list = await this.request<{
+      response?: {
+        item?: Array<{ item_id?: number; item_status?: string; update_time?: number }>;
+        item_list?: Array<{ item_id?: number; item_status?: string; update_time?: number }>;
+        total_count?: number;
+        has_next_page?: boolean;
+      };
+    }>('/api/v2/product/get_item_list', accessToken, shopId, {
+      method: 'GET',
+      query: {
+        offset: String(options.offset ?? 0),
+        page_size: String(pageSize),
+        item_status: status,
+      },
+    });
+
+    const summaries = list.response?.item ?? list.response?.item_list ?? [];
+    const itemIds = summaries
+      .map((item) => item.item_id)
+      .filter((itemId): itemId is number => Number.isFinite(itemId));
+    const details = itemIds.length
+      ? await this.getStoreProductBaseInfo(accessToken, shopId, itemIds)
+      : [];
+    const byId = new Map(details.map((item) => [item.itemId, item]));
+    const items = itemIds.map((itemId) => {
+      const detail = byId.get(String(itemId));
+      const summary = summaries.find((item) => item.item_id === itemId);
+      return {
+        itemId: String(itemId),
+        itemName: detail?.itemName ?? `Produto ${itemId}`,
+        sku: detail?.sku,
+        status: detail?.status ?? summary?.item_status ?? status,
+        categoryId: detail?.categoryId,
+        categoryName: detail?.categoryName,
+        imageUrl: detail?.imageUrl,
+        price: detail?.price,
+        stock: detail?.stock,
+        weight: detail?.weight,
+        description: detail?.description,
+        createTime: detail?.createTime,
+        updateTime: detail?.updateTime ?? summary?.update_time,
+      };
+    });
+
+    return {
+      items,
+      total: Number(list.response?.total_count ?? items.length),
+      hasNextPage: Boolean(list.response?.has_next_page),
+    };
+  }
+
+  async getStoreProductBaseInfo(
+    accessToken: string,
+    shopId: string,
+    itemIds: number[],
+  ): Promise<ShopeeStoreProduct[]> {
+    const ids = itemIds.slice(0, 50).filter((id) => Number.isFinite(id) && id > 0);
+    if (!ids.length) return [];
+
+    const json = await this.request<{
+      response?: { item_list?: Array<Record<string, unknown>> };
+    }>('/api/v2/product/get_item_base_info', accessToken, shopId, {
+      method: 'GET',
+      query: { item_id_list: ids.join(',') },
+    });
+
+    return (json.response?.item_list ?? []).map((item) => this.normalizeStoreProduct(item));
+  }
+
+  async updateStoreProduct(
+    accessToken: string,
+    shopId: string,
+    itemId: string,
+    patch: ShopeeStoreProductPatch,
+  ) {
+    const body: Record<string, unknown> = { item_id: Number(itemId) };
+    if (patch.itemName !== undefined) body.item_name = patch.itemName.slice(0, 120);
+    if (patch.description !== undefined) body.description = patch.description.slice(0, 5000);
+    if (patch.price !== undefined) body.original_price = patch.price;
+    if (patch.stock !== undefined) body.seller_stock = [{ stock: patch.stock }];
+    if (patch.weight !== undefined) body.weight = patch.weight;
+
+    return this.request('/api/v2/product/update_item', accessToken, shopId, { body });
+  }
+
+  async setStoreProductListed(
+    accessToken: string,
+    shopId: string,
+    itemId: string,
+    listed: boolean,
+  ) {
+    return this.request('/api/v2/product/unlist_item', accessToken, shopId, {
+      body: { item_list: [{ item_id: Number(itemId), unlist: !listed }] },
+    });
+  }
+
+  async deleteStoreProduct(accessToken: string, shopId: string, itemId: string) {
+    return this.request('/api/v2/product/delete_item', accessToken, shopId, {
+      body: { item_id: Number(itemId) },
+    });
+  }
+
   /**
    * Sobe uma imagem (buffer) para o Media Space da Shopee. Só imagens lá têm
    * `image_id` — o Add/Update Item da API não aceita URL direta como a
@@ -280,5 +413,51 @@ export class ShopeeApiClient {
     const message = json.message || json.error || `HTTP ${status}`;
     this.logger.warn(`Shopee API falhou (${pathOrUrl}): ${message}`);
     throw new Error(`Shopee API: ${message}`);
+  }
+
+  private normalizeStoreProduct(item: Record<string, unknown>): ShopeeStoreProduct {
+    const image = this.objectValue(item.image);
+    const imageUrls = this.arrayValue<string>(image?.image_url_list);
+    const sellerStock = this.arrayValue<Record<string, unknown>>(item.seller_stock);
+    const stockInfo = this.objectValue(item.stock_info_v2);
+    const sellerStockV2 = this.arrayValue<Record<string, unknown>>(stockInfo?.seller_stock);
+    const priceInfo = this.arrayValue<Record<string, unknown>>(item.price_info);
+    const price = this.numberValue(
+      priceInfo[0]?.current_price ?? priceInfo[0]?.original_price ?? item.original_price,
+    );
+
+    return {
+      itemId: String(item.item_id ?? ''),
+      itemName: String(item.item_name ?? ''),
+      sku: item.item_sku ? String(item.item_sku) : undefined,
+      status: String(item.item_status ?? 'NORMAL'),
+      categoryId: this.numberValue(item.category_id),
+      categoryName: item.category_name ? String(item.category_name) : undefined,
+      imageUrl: imageUrls[0],
+      price,
+      stock:
+        this.numberValue(sellerStockV2[0]?.stock) ??
+        this.numberValue(sellerStock[0]?.stock) ??
+        undefined,
+      weight: this.numberValue(item.weight),
+      description: item.description ? String(item.description) : undefined,
+      createTime: this.numberValue(item.create_time),
+      updateTime: this.numberValue(item.update_time),
+    };
+  }
+
+  private objectValue(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private arrayValue<T>(value: unknown): T[] {
+    return Array.isArray(value) ? (value as T[]) : [];
+  }
+
+  private numberValue(value: unknown): number | undefined {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
   }
 }
