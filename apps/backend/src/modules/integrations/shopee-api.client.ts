@@ -9,6 +9,15 @@ export interface ShopeeTokenResult {
   shopId: string;
 }
 
+export interface ShopeeCategoryApiItem {
+  category_id: number;
+  parent_category_id?: number;
+  category_name?: string;
+  display_category_name?: string;
+  original_category_name?: string;
+  has_children?: boolean;
+}
+
 type ShopeeApiResponse = Record<string, unknown> & { error?: string; message?: string };
 
 /**
@@ -206,6 +215,17 @@ export class ShopeeApiClient {
     return (json.response?.logistics_channel_list ?? [])
       .filter((c) => c.enabled)
       .map((c) => c.logistics_channel_id);
+  }
+
+  /** Árvore oficial de categorias disponível para a loja. Usada antes de publicar via API. */
+  async getCategories(accessToken: string, shopId: string): Promise<ShopeeCategoryApiItem[]> {
+    const json = await this.request<{
+      response?: { category_list?: ShopeeCategoryApiItem[] };
+    }>('/api/v2/product/get_category', accessToken, shopId, {
+      method: 'GET',
+      query: { language: 'pt-br' },
+    });
+    return json.response?.category_list ?? [];
   }
 
   /**

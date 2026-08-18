@@ -13,6 +13,13 @@ import {
 } from '../../modules/database/schemas/product.schema';
 import { ShopeeApiClient } from '../../modules/integrations/shopee-api.client';
 import { ShopeeConnectionsService } from '../../modules/integrations/shopee-connections.service';
+import { AiService } from '../../modules/ai/ai.service';
+import {
+  buildShopeeCategoryCandidates,
+  normalizeShopeeCategoryChoice,
+  shortlistShopeeCategoryCandidates,
+  ShopeeCategoryCandidate,
+} from '../../modules/integrations/shopee-category-inference';
 import { mapProductToShopeeItem } from '../../modules/integrations/shopee-item-mapper';
 import { collectImages } from '../../modules/products/shopee/shopee-mapper';
 import { MercadoLivreApiClient } from '../../modules/integrations/mercado-livre-api.client';
@@ -28,8 +35,11 @@ export class ShopeePublisher implements MarketplacePublisher {
   constructor(
     private readonly client: ShopeeApiClient,
     private readonly connections: ShopeeConnectionsService,
+    private readonly ai: AiService,
     @InjectModel(ProductEntity.name) private readonly model: Model<ProductDocument>,
   ) {}
+
+  private readonly categoryCache = new Map<string, Promise<ShopeeCategoryCandidate[]>>();
 
   get enabled(): boolean {
     return this.client.configured;
@@ -102,10 +112,115 @@ export class ShopeePublisher implements MarketplacePublisher {
     return ids;
   }
 
+  private getCategoryCandidates(
+    accessToken: string,
+    shopId: string,
+  ): Promise<ShopeeCategoryCandidate[]> {
+    const cached = this.categoryCache.get(shopId);
+    if (cached) return cached;
+
+    const promise = this.client
+      .getCategories(accessToken, shopId)
+      .then((categories) => buildShopeeCategoryCandidates(categories))
+      .catch((error) => {
+        this.categoryCache.delete(shopId);
+        throw error;
+      });
+    this.categoryCache.set(shopId, promise);
+    return promise;
+  }
+
+  private async ensureShopeeCategory(
+    product: Product,
+    accessToken: string,
+    shopId: string,
+  ): Promise<Product> {
+    const currentCategoryId = Number(product.vision.shopeeCategoryId);
+    if (Number.isFinite(currentCategoryId) && currentCategoryId > 0) return product;
+
+    const candidates = await this.getCategoryCandidates(accessToken, shopId);
+    if (!candidates.length) {
+      throw new Error('Shopee nao retornou categorias oficiais para escolher.');
+    }
+
+    const title = product.content?.title || product.vision.name || product.internalSku;
+    const categoryText = product.content?.category || product.vision.category || '';
+    const shortlist = shortlistShopeeCategoryCandidates(
+      candidates,
+      [title, categoryText, product.vision.brand].filter(Boolean).join(' '),
+    );
+
+    const response = await this.ai.generateText<{
+      categoryId: number;
+      confidence?: number;
+      reason?: string;
+    }>({
+      json: true,
+      maxTokens: 500,
+      temperature: 0.1,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Escolha a categoria Shopee oficial mais adequada para publicar o produto. ' +
+            'Use somente um categoryId presente na lista de candidatos. ' +
+            'Baseie a escolha principalmente no titulo do produto e use a categoria textual apenas como apoio.',
+        },
+        {
+          role: 'user',
+          content:
+            `Produto:\n${JSON.stringify(
+              {
+                title,
+                category: categoryText || null,
+                brand: product.vision.brand ?? null,
+              },
+              null,
+              2,
+            )}\n\n` +
+            `Candidatos oficiais:\n${JSON.stringify(shortlist, null, 2)}\n\n` +
+            'Responda no formato {"categoryId": 123, "confidence": 0.0, "reason": "..."}',
+        },
+      ],
+    });
+
+    const selected = normalizeShopeeCategoryChoice(response.data, shortlist);
+    if (!selected) {
+      throw new Error('IA nao conseguiu escolher uma categoria Shopee oficial para este titulo.');
+    }
+
+    await this.model.updateOne(
+      { _id: product.id },
+      {
+        $set: {
+          'vision.shopeeCategoryId': selected.id,
+          'vision.shopeeCategoryPath': selected.path,
+          'vision.shopeeCategorySource': 'ia_titulo',
+        },
+      },
+    );
+    this.logger.log(
+      `Categoria Shopee inferida p/ ${product.internalSku}: ${selected.id} (${selected.path})`,
+    );
+
+    return {
+      ...product,
+      vision: {
+        ...product.vision,
+        shopeeCategoryId: selected.id,
+      },
+    };
+  }
+
   private async pushItem(product: Product): Promise<PublishResult> {
     const auth = await this.requireAuth(product.ownerId);
-    const imageIds = await this.uploadImages(auth.accessToken, auth.shopId, product);
-    const payload = mapProductToShopeeItem(product, imageIds);
+    const categorizedProduct = await this.ensureShopeeCategory(
+      product,
+      auth.accessToken,
+      auth.shopId,
+    );
+    const imageIds = await this.uploadImages(auth.accessToken, auth.shopId, categorizedProduct);
+    const payload = mapProductToShopeeItem(categorizedProduct, imageIds);
     payload.logistic_info = (
       await this.client.getEnabledLogisticIds(auth.accessToken, auth.shopId)
     ).map((logistic_id) => ({ logistic_id, enabled: true }));
@@ -114,7 +229,7 @@ export class ShopeePublisher implements MarketplacePublisher {
       throw new Error('Habilite ao menos um canal logistico no Seller Center da Shopee.');
     }
 
-    const existingItemId = product.externalIds?.shopee;
+    const existingItemId = categorizedProduct.externalIds?.shopee;
     const path = existingItemId ? '/api/v2/product/update_item' : '/api/v2/product/add_item';
     const body = existingItemId ? { ...payload, item_id: Number(existingItemId) } : payload;
 
@@ -135,7 +250,9 @@ export class ShopeePublisher implements MarketplacePublisher {
       },
     );
 
-    this.logger.log(`Produto ${product.internalSku} publicado na Shopee (item_id=${itemId}).`);
+    this.logger.log(
+      `Produto ${categorizedProduct.internalSku} publicado na Shopee (item_id=${itemId}).`,
+    );
     return {
       channel: this.channel,
       success: true,

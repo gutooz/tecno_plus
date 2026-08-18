@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
+  CheckCircle2,
   Search,
   Copy,
   Trash2,
@@ -15,6 +17,8 @@ import {
   Scale,
   ShoppingBag,
   Sparkles,
+  X,
+  XCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, Checkbox, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
@@ -65,6 +69,28 @@ interface PublishBatchResponse {
   published: number;
   skippedExisting?: number;
   failed?: number;
+  results?: PublishBatchResult[];
+}
+
+interface PublishBatchResult {
+  id: string;
+  ok: boolean;
+  skipped?: boolean;
+  error?: string;
+}
+
+interface ShopeePublishNotice {
+  total: number;
+  published: number;
+  skippedExisting: number;
+  failed: number;
+  errors: FailureGroup[];
+  fallbackError?: string;
+}
+
+interface FailureGroup {
+  message: string;
+  count: number;
 }
 
 /** O backend escapa acentos p/ caber no header HTTP (ver `encodeReportHeader`
@@ -112,6 +138,23 @@ export default function ProductsPage() {
   const [exporting, setExporting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [estimatingWeight, setEstimatingWeight] = useState(false);
+  const [shopeeNotice, setShopeeNotice] = useState<ShopeePublishNotice | null>(null);
+
+  useEffect(() => {
+    if (!shopeeNotice) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShopeeNotice(null);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [shopeeNotice]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, page],
@@ -161,13 +204,16 @@ export default function ProductsPage() {
       });
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ['products'] });
-      alert(
-        `${res.published}/${res.total} produto(s) subido(s) para a Shopee.\n` +
-          `${res.skippedExisting ?? 0} já existia(m) na sua Shopee e foram pulado(s).\n` +
-          `${res.failed ?? 0} falharam.`,
-      );
+      setShopeeNotice(toShopeePublishNotice(res));
     } catch (e) {
-      alert(`Não foi possível subir para a Shopee: ${e instanceof Error ? e.message : String(e)}`);
+      setShopeeNotice({
+        total: selected.size,
+        published: 0,
+        skippedExisting: 0,
+        failed: selected.size,
+        errors: [],
+        fallbackError: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       setPublishing(false);
     }
@@ -605,6 +651,164 @@ export default function ProductsPage() {
           </Button>
         </div>
       )}
+
+      {shopeeNotice && (
+        <ShopeePublishDialog notice={shopeeNotice} onClose={() => setShopeeNotice(null)} />
+      )}
+    </div>
+  );
+}
+
+function toShopeePublishNotice(res: PublishBatchResponse): ShopeePublishNotice {
+  return {
+    total: res.total,
+    published: res.published,
+    skippedExisting: res.skippedExisting ?? 0,
+    failed: res.failed ?? 0,
+    errors: groupPublishErrors(res.results),
+  };
+}
+
+function groupPublishErrors(results?: PublishBatchResult[]): FailureGroup[] {
+  const grouped = new Map<string, number>();
+  for (const result of results ?? []) {
+    if (result.ok || !result.error) continue;
+    const current = grouped.get(result.error) ?? 0;
+    grouped.set(result.error, current + 1);
+  }
+  return [...grouped.entries()]
+    .map(([message, count]) => ({ message, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function ShopeePublishDialog({
+  notice,
+  onClose,
+}: {
+  notice: ShopeePublishNotice;
+  onClose: () => void;
+}) {
+  const allFailed = notice.total > 0 && notice.failed === notice.total;
+  const hasFailures = notice.failed > 0;
+  const Icon = allFailed ? XCircle : hasFailures ? AlertTriangle : CheckCircle2;
+  const tone = allFailed ? 'danger' : hasFailures ? 'warning' : 'success';
+  const title = allFailed
+    ? 'Nenhum produto subiu para a Shopee'
+    : hasFailures
+      ? 'Envio para Shopee concluído com pendências'
+      : 'Produtos enviados para a Shopee';
+  const lead = notice.fallbackError
+    ? 'A Shopee não recebeu o lote porque a API respondeu com erro.'
+    : allFailed
+      ? 'Todos os produtos foram barrados antes de publicar. Corrija o motivo abaixo e tente de novo.'
+      : hasFailures
+        ? 'Uma parte do lote subiu, mas alguns produtos precisam de ajuste antes de tentar novamente.'
+        : 'O lote terminou sem falhas.';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        aria-modal="true"
+        role="dialog"
+        aria-labelledby="shopee-publish-dialog-title"
+        className="w-full max-w-xl overflow-hidden rounded-3xl border border-border bg-surface shadow-2xl"
+      >
+        <div className="flex items-start gap-4 border-b border-border/70 p-5">
+          <div
+            className={cn(
+              'mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
+              tone === 'danger' && 'bg-danger/12 text-danger',
+              tone === 'warning' && 'bg-warning/15 text-warning',
+              tone === 'success' && 'bg-success/14 text-success',
+            )}
+          >
+            <Icon size={23} strokeWidth={2.4} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p id="shopee-publish-dialog-title" className="text-base font-semibold text-fg">
+              {title}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-muted">{lead}</p>
+          </div>
+          <IconButton aria-label="Fechar aviso" onClick={onClose}>
+            <X size={18} />
+          </IconButton>
+        </div>
+
+        <div className="p-5">
+          <div className="grid grid-cols-3 gap-2.5">
+            <PublishMetric label="Subiram" value={notice.published} tone="success" />
+            <PublishMetric label="Já existiam" value={notice.skippedExisting} tone="muted" />
+            <PublishMetric label="Falharam" value={notice.failed} tone="danger" />
+          </div>
+
+          {(notice.fallbackError || notice.errors.length > 0) && (
+            <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-4">
+              <p className="text-sm font-semibold text-fg">Motivo encontrado</p>
+              {notice.fallbackError ? (
+                <p className="mt-2 text-sm leading-6 text-muted">{notice.fallbackError}</p>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  {notice.errors.slice(0, 4).map((error) => (
+                    <div key={error.message} className="rounded-xl bg-surface px-3 py-2">
+                      <p className="text-sm leading-5 text-fg">{error.message}</p>
+                      <p className="mt-1 text-xs font-medium text-muted">
+                        {error.count} produto(s) com esse problema
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={onClose}>
+              Fechar
+            </Button>
+            {hasFailures && !notice.fallbackError && (
+              <Link href="/integrations">
+                <Button className="w-full sm:w-auto">
+                  <ShoppingBag size={15} />
+                  Ver integração Shopee
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PublishMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'success' | 'danger' | 'muted';
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface-2 px-3 py-3">
+      <p
+        className={cn(
+          'nums text-xl font-semibold',
+          tone === 'success' && 'text-success',
+          tone === 'danger' && 'text-danger',
+          tone === 'muted' && 'text-muted',
+        )}
+      >
+        {value}
+      </p>
+      <p className="mt-0.5 text-xs font-medium text-muted">{label}</p>
     </div>
   );
 }

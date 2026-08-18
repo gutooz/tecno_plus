@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { MarketplaceChannel, Product as ProductDomain } from '@tecnoplus/shared';
@@ -16,6 +16,8 @@ function productIdValues(id: string): unknown[] {
  */
 @Injectable()
 export class PublishService {
+  private readonly logger = new Logger(PublishService.name);
+
   constructor(
     @InjectModel(Product.name) private readonly products: Model<ProductDocument>,
     private readonly publisher: PublisherAgent,
@@ -67,6 +69,7 @@ export class PublishService {
           return { id, ok: true as const };
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);
+          this.logger.warn(`Falha ao publicar ${id} em ${channel}: ${error}`);
           return { id, ok: false as const, error };
         }
       }),
