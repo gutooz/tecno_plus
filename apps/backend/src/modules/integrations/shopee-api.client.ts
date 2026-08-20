@@ -328,20 +328,48 @@ export class ShopeeApiClient {
     return (json.response?.item_list ?? []).map((item) => this.normalizeStoreProduct(item));
   }
 
+  /**
+   * `update_item` só aceita nome/descrição/peso — preço e estoque não têm
+   * efeito nesse endpoint na Shopee Open API v2, precisam de `update_price`
+   * e `update_stock` dedicados (cada um assinado e chamado separadamente).
+   */
   async updateStoreProduct(
     accessToken: string,
     shopId: string,
     itemId: string,
     patch: ShopeeStoreProductPatch,
   ) {
-    const body: Record<string, unknown> = { item_id: Number(itemId) };
-    if (patch.itemName !== undefined) body.item_name = patch.itemName.slice(0, 120);
-    if (patch.description !== undefined) body.description = patch.description.slice(0, 5000);
-    if (patch.price !== undefined) body.original_price = patch.price;
-    if (patch.stock !== undefined) body.seller_stock = [{ stock: patch.stock }];
-    if (patch.weight !== undefined) body.weight = patch.weight;
+    const numericItemId = Number(itemId);
 
-    return this.request('/api/v2/product/update_item', accessToken, shopId, { body });
+    if (
+      patch.itemName !== undefined ||
+      patch.description !== undefined ||
+      patch.weight !== undefined
+    ) {
+      const body: Record<string, unknown> = { item_id: numericItemId };
+      if (patch.itemName !== undefined) body.item_name = patch.itemName.slice(0, 120);
+      if (patch.description !== undefined) body.description = patch.description.slice(0, 5000);
+      if (patch.weight !== undefined) body.weight = patch.weight;
+      await this.request('/api/v2/product/update_item', accessToken, shopId, { body });
+    }
+
+    if (patch.price !== undefined) {
+      await this.request('/api/v2/product/update_price', accessToken, shopId, {
+        body: {
+          item_id: numericItemId,
+          price_list: [{ model_id: 0, original_price: patch.price }],
+        },
+      });
+    }
+
+    if (patch.stock !== undefined) {
+      await this.request('/api/v2/product/update_stock', accessToken, shopId, {
+        body: {
+          item_id: numericItemId,
+          stock_list: [{ model_id: 0, seller_stock: [{ stock: patch.stock }] }],
+        },
+      });
+    }
   }
 
   async setStoreProductListed(

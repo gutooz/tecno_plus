@@ -15,6 +15,7 @@ import {
   Search,
   ShoppingBag,
   Trash2,
+  Unplug,
   UploadCloud,
   X,
 } from 'lucide-react';
@@ -101,6 +102,7 @@ function ShopeeProductsContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['integrations'],
@@ -138,6 +140,17 @@ function ShopeeProductsContent() {
     onError: (err) => setBanner(toErrorBanner(err)),
   });
 
+  const disconnectShopee = useMutation({
+    mutationFn: () => api.post('/integrations/shopee/disconnect'),
+    onSuccess: () => {
+      setConfirmingDisconnect(false);
+      setBanner({ type: 'success', text: 'Loja Shopee desconectada.' });
+      queryClient.removeQueries({ queryKey: ['shopee-store-products'] });
+      queryClient.invalidateQueries({ queryKey: ['integrations'] });
+    },
+    onError: (err) => setBanner(toErrorBanner(err)),
+  });
+
   return (
     <div className="mx-auto max-w-7xl">
       <PageHeader
@@ -147,7 +160,50 @@ function ShopeeProductsContent() {
             ? `Produtos da loja ${shopName}`
             : 'Produtos da loja conectada pela Shopee Open Platform'
         }
-      />
+      >
+        {connected && (
+          <Button
+            size="sm"
+            variant="danger"
+            loading={disconnectShopee.isPending}
+            onClick={() => setConfirmingDisconnect(true)}
+          >
+            <Unplug size={15} /> Desconectar Shopee
+          </Button>
+        )}
+      </PageHeader>
+
+      {confirmingDisconnect && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger/12 text-danger">
+                <Unplug size={18} />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">Desconectar loja Shopee?</p>
+                <p className="mt-1 text-sm text-muted">
+                  {shopName ? `A loja ${shopName} será desconectada. ` : ''}
+                  Voce pode conectar novamente a qualquer momento.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setConfirmingDisconnect(false)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                loading={disconnectShopee.isPending}
+                onClick={() => disconnectShopee.mutate()}
+              >
+                Desconectar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {banner && (
         <div
@@ -255,8 +311,8 @@ function ShopeeStoreProducts({
         },
       );
     },
-    onSuccess: (res) => {
-      setEditing(res.item ?? null);
+    onSuccess: () => {
+      setEditing(null);
       setNotice('Produto atualizado na Shopee.');
       queryClient.invalidateQueries({ queryKey: ['shopee-store-products'] });
     },
@@ -453,51 +509,85 @@ function ShopeeStoreProducts({
               <div className="grid gap-4 sm:grid-cols-[88px_1fr]">
                 <ProductThumb item={editing} large />
                 <div className="grid gap-3">
-                  <Input
-                    value={draft.itemName}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, itemName: event.target.value }))
-                    }
-                    placeholder="Título"
-                  />
-                  <textarea
-                    value={draft.description}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, description: event.target.value }))
-                    }
-                    rows={5}
-                    className="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-sm text-fg outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/15"
-                    placeholder="Descrição"
-                  />
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-muted">
+                      Título do anúncio
+                    </span>
+                    <Input
+                      value={draft.itemName}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, itemName: event.target.value }))
+                      }
+                      placeholder="Título"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-muted">
+                      Descrição exibida na página do produto
+                    </span>
+                    <textarea
+                      value={draft.description}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, description: event.target.value }))
+                      }
+                      rows={5}
+                      className="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-sm text-fg outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/15"
+                      placeholder="Descrição"
+                    />
+                  </label>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <Input
-                  value={draft.price}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, price: event.target.value }))
-                  }
-                  inputMode="decimal"
-                  placeholder="Preço"
-                />
-                <Input
-                  value={draft.stock}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, stock: event.target.value }))
-                  }
-                  inputMode="numeric"
-                  placeholder="Estoque"
-                />
-                <Input
-                  value={draft.weight}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, weight: event.target.value }))
-                  }
-                  inputMode="decimal"
-                  placeholder="Peso kg"
-                />
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-muted">
+                    Preço de venda
+                  </span>
+                  <Input
+                    value={draft.price}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, price: event.target.value }))
+                    }
+                    inputMode="decimal"
+                    leadingIcon="R$"
+                    placeholder="0,00"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-muted">
+                    Estoque disponível
+                  </span>
+                  <Input
+                    value={draft.stock}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, stock: event.target.value }))
+                    }
+                    inputMode="numeric"
+                    placeholder="Unidades"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-muted">
+                    Peso do pacote
+                  </span>
+                  <Input
+                    value={draft.weight}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, weight: event.target.value }))
+                    }
+                    inputMode="decimal"
+                    trailingIcon="kg"
+                    placeholder="0,0"
+                  />
+                </label>
               </div>
+
+              {save.isError && (
+                <p className="mt-3 flex items-center gap-2 rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">
+                  <AlertCircle size={15} className="shrink-0" />
+                  {save.error instanceof Error ? save.error.message : 'Falha ao salvar produto.'}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
