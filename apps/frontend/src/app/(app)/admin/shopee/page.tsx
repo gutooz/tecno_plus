@@ -1,5 +1,5 @@
-import { AdminMarketplaceSettings } from '@/components/admin-marketplace-settings';
+import { ShopeeProductsManager } from '@/components/shopee-products-manager';
 
 export default function AdminShopeePage() {
-  return <AdminMarketplaceSettings marketplace="shopee" />;
+  return <ShopeeProductsManager />;
 }

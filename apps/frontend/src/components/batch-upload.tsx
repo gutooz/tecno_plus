@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ImagePlus, Save, Trash2, UploadCloud, X } from 'lucide-react';
+import { ImagePlus, Trash2, UploadCloud, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, IconButton, Input } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
@@ -45,7 +45,7 @@ interface PendingListResponse {
 
 /**
  * Envio em Lote: sobe N fotos de uma vez, elas ficam aqui aguardando
- * título/preço (uma a uma ou todas de uma vez com "Salvar todos"). Ao salvar,
+ * título/preço, uma a uma. Ao salvar,
  * o produto sai desta lista e passa a existir em Produtos (de onde saem o
  * Excel e a publicação na loja). Reaproveitada por /upload e /lote.
  */
@@ -55,7 +55,6 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const [savingAll, setSavingAll] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -240,19 +239,6 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
     }
   }
 
-  async function saveAll() {
-    const fillable = pending.filter((p) => p.name.trim());
-    if (!fillable.length) return;
-    setSavingAll(true);
-    try {
-      await Promise.all(fillable.map((p) => saveOne(p.id)));
-    } finally {
-      setSavingAll(false);
-    }
-  }
-
-  const fillableCount = pending.filter((p) => p.name.trim()).length;
-
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
@@ -377,10 +363,6 @@ export function BatchUpload({ title = 'Envio em Lote' }: { title?: string }) {
             <p className="text-sm text-muted">
               Preencha e salve — ao salvar, o produto vai para o catálogo.
             </p>
-            <Button loading={savingAll} disabled={!fillableCount} onClick={saveAll}>
-              {!savingAll && <Save size={16} />}
-              {savingAll ? 'Salvando…' : `Salvar todos (${fillableCount})`}
-            </Button>
           </div>
 
           {/* Mobile: cada pendente vira um card empilhado — sem scroll lateral */}
