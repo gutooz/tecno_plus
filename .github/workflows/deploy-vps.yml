@@ -98,6 +98,11 @@ jobs:
           app_env = Path('$APP_DIR/.env')
           previous_env = Path('/tmp/tecno-plus-env-before-deploy')
           preserve_keys = {
+              'TOKEN_ENCRYPTION_KEY',
+              'TELEGRAM_BOT_TOKEN',
+              'TELEGRAM_CHAT_ID',
+              'TELEGRAM_OWNER_ID',
+              'TELEGRAM_BOT_USERNAME',
               'SHOPEE_PARTNER_ID',
               'SHOPEE_PARTNER_KEY',
               'SHOPEE_ENVIRONMENT',
@@ -106,6 +111,10 @@ jobs:
               'SHOPEE_AUTH_HOST',
               'SHOPEE_REDIRECT_URL',
               'SHOPEE_WEBHOOK_URL',
+              'ASAAS_API_KEY',
+              'ASAAS_ENVIRONMENT',
+              'ASAAS_API_URL',
+              'ASAAS_PLATFORM_FEE',
           }
 
           def parse_env(path):

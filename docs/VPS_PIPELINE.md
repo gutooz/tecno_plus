@@ -75,6 +75,9 @@ APP_DOMAIN=zycron.online
 PUBLIC_APP_URL=https://zycron.online
 CORS_ORIGIN=https://zycron.online
 SHOPEE_REDIRECT_URL=https://zycron.online/api/integrations/shopee/callback
+SHOPEE_PARTNER_ID=...
+SHOPEE_PARTNER_KEY=...
+TOKEN_ENCRYPTION_KEY=<mesma chave forte usada quando a loja foi conectada>
 ```
 
 No painel da Shopee Open Platform, a Redirect URL precisa ser exatamente:
@@ -94,6 +97,10 @@ TELEGRAM_BOT_TOKEN=<token do @BotFather>
 TELEGRAM_CHAT_ID=<IDs de chat autorizados, separados por vírgula>
 TELEGRAM_OWNER_ID=<ownerId dos produtos cadastrados pelo bot>
 ```
+
+O deploy preserva essas variáveis operacionais quando o `PROD_ENV_FILE` novo
+vem sem valor, para evitar que um redeploy derrube a Shopee, o Asaas ou o bot
+por acidente. Ainda assim, mantenha o secret completo e atualizado no GitHub.
 
 ## Deploy manual
 

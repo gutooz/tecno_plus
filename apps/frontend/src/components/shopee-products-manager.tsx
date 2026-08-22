@@ -300,14 +300,20 @@ function ShopeeStoreProducts({
   const save = useMutation({
     mutationFn: () => {
       if (!editing) throw new Error('Nenhum produto selecionado.');
+      const price = parseNumberInput(draft.price, 'Preço de venda');
+      const stock = parseNumberInput(draft.stock, 'Estoque disponível', {
+        allowZero: true,
+        integer: true,
+      });
+      const weight = parseNumberInput(draft.weight, 'Peso do pacote');
       return api.patch<{ item?: ShopeeStoreProduct }>(
         `/integrations/shopee/products/${editing.itemId}`,
         {
           itemName: draft.itemName,
           description: draft.description,
-          price: draft.price ? Number(draft.price) : undefined,
-          stock: draft.stock ? Number(draft.stock) : undefined,
-          weight: draft.weight ? Number(draft.weight) : undefined,
+          price,
+          stock,
+          weight,
         },
       );
     },
@@ -894,6 +900,23 @@ function storeStatus(status: string) {
 
 function categoryLabel(item: ShopeeStoreProduct) {
   return item.categoryId ? `Categoria ${item.categoryId}` : '-';
+}
+
+function parseNumberInput(
+  value: string,
+  label: string,
+  options: { allowZero?: boolean; integer?: boolean } = {},
+): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const compact = trimmed.replace(/[^\d,.-]/g, '');
+  const normalized = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
+  const parsed = Number(normalized);
+  const minOk = options.allowZero ? parsed >= 0 : parsed > 0;
+  if (!Number.isFinite(parsed) || !minOk) {
+    throw new Error(`${label} inválido.`);
+  }
+  return options.integer ? Math.floor(parsed) : parsed;
 }
 
 function formatUnixDate(value?: number) {

@@ -421,29 +421,48 @@ export class IntegrationsController {
   }
 
   private cleanShopeeProductPatch(body: ShopeeStoreProductPatch): ShopeeStoreProductPatch {
+    const rawBody = body as Record<string, unknown>;
     const patch: ShopeeStoreProductPatch = {};
-    if (typeof body.itemName === 'string' && body.itemName.trim()) {
-      patch.itemName = body.itemName.trim();
+    if (typeof rawBody.itemName === 'string' && rawBody.itemName.trim()) {
+      patch.itemName = rawBody.itemName.trim();
     }
-    if (typeof body.description === 'string' && body.description.trim()) {
-      patch.description = body.description.trim();
+    if (typeof rawBody.description === 'string' && rawBody.description.trim()) {
+      patch.description = rawBody.description.trim();
     }
-    if (body.price !== undefined) {
-      const price = Number(body.price);
-      if (!Number.isFinite(price) || price <= 0) throw new BadRequestException('Preco invalido.');
-      patch.price = price;
+    if (rawBody.price !== undefined) {
+      patch.price = this.parseShopeePatchNumber(rawBody.price, 'Preco invalido.');
     }
-    if (body.stock !== undefined) {
-      const stock = Number(body.stock);
-      if (!Number.isFinite(stock) || stock < 0) throw new BadRequestException('Estoque invalido.');
-      patch.stock = Math.floor(stock);
+    if (rawBody.stock !== undefined) {
+      patch.stock = this.parseShopeePatchNumber(rawBody.stock, 'Estoque invalido.', {
+        allowZero: true,
+        integer: true,
+      });
     }
-    if (body.weight !== undefined) {
-      const weight = Number(body.weight);
-      if (!Number.isFinite(weight) || weight <= 0) throw new BadRequestException('Peso invalido.');
-      patch.weight = weight;
+    if (rawBody.weight !== undefined) {
+      patch.weight = this.parseShopeePatchNumber(rawBody.weight, 'Peso invalido.');
     }
     return patch;
+  }
+
+  private parseShopeePatchNumber(
+    value: unknown,
+    errorMessage: string,
+    options: { allowZero?: boolean; integer?: boolean } = {},
+  ): number {
+    let parsed = NaN;
+    if (typeof value === 'number') {
+      parsed = value;
+    } else if (typeof value === 'string' && value.trim()) {
+      const compact = value.trim().replace(/[^\d,.-]/g, '');
+      const normalized = compact.includes(',')
+        ? compact.replace(/\./g, '').replace(',', '.')
+        : compact;
+      parsed = Number(normalized);
+    }
+
+    const minOk = options.allowZero ? parsed >= 0 : parsed > 0;
+    if (!Number.isFinite(parsed) || !minOk) throw new BadRequestException(errorMessage);
+    return options.integer ? Math.floor(parsed) : parsed;
   }
 
   private frontendRedirect(frontendUrl: string, path: string, params: Record<string, string>) {
