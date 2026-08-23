@@ -77,16 +77,17 @@ export class TelegramService {
     this.ownerId = this.config.get<string>('telegram.ownerId') ?? 'bras';
   }
 
-  async start(): Promise<void> {
+  async start(): Promise<boolean> {
     if (!this.api) {
       this.logger.error('TELEGRAM_BOT_TOKEN ausente — bot não iniciado.');
-      return;
+      return false;
     }
     this.running = true;
     this.logger.log(
       `Bot Telegram ativo (long-polling). IDs autorizados: ${[...this.allowed].join(', ') || '(nenhum!)'}`,
     );
     void this.loop();
+    return true;
   }
 
   stop(): void {

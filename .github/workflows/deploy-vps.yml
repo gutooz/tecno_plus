@@ -99,6 +99,15 @@ jobs:
           previous_env = Path('/tmp/tecno-plus-env-before-deploy')
           preserve_keys = {
               'TOKEN_ENCRYPTION_KEY',
+              'MONGODB_URI',
+              'MONGODB_DATABASE',
+              'MONGODB_MIN_POOL_SIZE',
+              'MONGODB_MAX_POOL_SIZE',
+              'MONGODB_SERVER_SELECTION_TIMEOUT_MS',
+              'MONGODB_CONNECT_TIMEOUT_MS',
+              'MONGODB_SOCKET_TIMEOUT_MS',
+              'MONGO_URI',
+              'MONGO_DB_NAME',
               'TELEGRAM_BOT_TOKEN',
               'TELEGRAM_CHAT_ID',
               'TELEGRAM_OWNER_ID',

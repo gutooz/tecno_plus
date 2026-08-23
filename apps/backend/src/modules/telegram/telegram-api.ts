@@ -84,7 +84,7 @@ export class TelegramApi {
     text: string,
     replyMarkup?: TgInlineKeyboard,
   ): Promise<void> {
-    await fetch(`${this.base}/sendMessage`, {
+    const res = await fetch(`${this.base}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -94,6 +94,8 @@ export class TelegramApi {
         reply_markup: replyMarkup,
       }),
     });
+    const json = (await res.json()) as { ok: boolean; description?: string };
+    if (!json.ok) throw new Error(`sendMessage: ${json.description ?? 'erro'}`);
   }
 
   /** Manda foto (por URL) com legenda e, opcionalmente, botões inline. Devolve o message_id. */

@@ -66,6 +66,19 @@ Crie:
 - `VPS_APP_DIR`: `/opt/tecno-plus`
 - `PROD_ENV_FILE`: conteudo baseado em `infra/vps.env.example`
 
+## MongoDB Atlas
+
+O `PROD_ENV_FILE` deve apontar para o mesmo cluster Atlas usado no ambiente
+local:
+
+```env
+MONGODB_URI=mongodb+srv://app_production:********@cluster.mongodb.net/tecnoplus?retryWrites=true&w=majority
+MONGODB_DATABASE=tecnoplus
+```
+
+Nao coloque `mongodb://mongo` nem credenciais reais no repositorio. O MongoDB
+antigo da VPS deve permanecer preservado como rollback ate a validacao final.
+
 ## Variaveis importantes para a Shopee
 
 No `PROD_ENV_FILE`, confira:

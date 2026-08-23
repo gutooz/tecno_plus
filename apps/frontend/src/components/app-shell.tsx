@@ -25,6 +25,7 @@ import {
   Moon,
   Sun,
   LogOut,
+  MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -75,6 +76,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: '/products', label: 'Produtos IA', icon: Package },
   { href: '/admin/shopee', label: 'Shopee', icon: ShoppingBag },
   { href: '/admin/mercado-livre', label: 'Mercado Livre', icon: Store },
+  { href: '/admin/whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];
 

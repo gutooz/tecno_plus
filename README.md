@@ -105,7 +105,8 @@ troca por variável de ambiente, sem acoplar nenhum agente a um SDK específico.
 ## Pré-requisitos
 
 - Node.js ≥ 20
-- Docker + Docker Compose (para o MongoDB local)
+- Docker + Docker Compose (para serviços locais opcionais)
+- MongoDB Atlas com uma connection string `mongodb+srv://...`
 - Chave de ao menos um provedor de IA (opcional para subir; obrigatória p/ o
   pipeline gerar resultados reais)
 
@@ -113,12 +114,12 @@ troca por variável de ambiente, sem acoplar nenhum agente a um SDK específico.
 
 ```bash
 # 1. Variáveis de ambiente
-cp .env.example .env        # edite as chaves de IA / Supabase se tiver
+cp .env.example .env        # preencha MONGODB_URI com a connection string do Atlas
 
 # 2. Dependências (monorepo)
 npm install
 
-# 3. Infra local (MongoDB)
+# 3. Infra local (serviços auxiliares, sem MongoDB)
 npm run infra:up
 
 # 4. Build do pacote compartilhado (uma vez)
@@ -139,6 +140,9 @@ separado) — o passo 5 já é suficiente para o cadastro automático funcionar.
 
 > **Tudo em containers?** `docker compose --profile apps up --build` sobe a
 > infra e os apps juntos (API com bot embutido e Frontend).
+
+Para usar MongoDB local em testes pontuais, rode `npm run infra:up:local-db`
+e troque `MONGODB_URI` no `.env` para `mongodb://localhost:27017/tecnoplus`.
 
 Primeiro acesso: abra o frontend, clique em **Cadastre-se**, crie um usuário e
 comece pelo **Upload**.
@@ -240,4 +244,5 @@ ESLint + Prettier + Husky (pre-commit com lint-staged) configurados.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramas e justificativas
 - [docs/ROADMAP.md](docs/ROADMAP.md) — evolução até produção e melhorias priorizadas
 - [docs/DEPLOY.md](docs/DEPLOY.md) — deploy grátis no Render + configuração da Shopee Open Platform
+- [docs/MONGODB_ATLAS_MIGRATION.md](docs/MONGODB_ATLAS_MIGRATION.md) — migração MongoDB VPS → Atlas, validação e rollback
 - [docs/SHOPEE_OPEN_PLATFORM.md](docs/SHOPEE_OPEN_PLATFORM.md) — checklist de submissão como Third-party Partner

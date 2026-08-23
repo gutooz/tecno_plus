@@ -22,6 +22,7 @@ __pycache__/
 
 # Logs
 logs/
+log/
 *.log
 npm-debug.log*
 .codex-local/
@@ -41,6 +42,8 @@ coverage/
 
 # Docker volumes (local)
 .docker-data/
+tokens/
+userDataDir/
 
 # Temp
 tmp/

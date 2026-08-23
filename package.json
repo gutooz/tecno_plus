@@ -17,7 +17,9 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "test": "npm run test --workspace @tecnoplus/backend",
-    "infra:up": "docker compose up -d mongo redis",
+    "mongo:audit": "node scripts/mongo-atlas-audit.mjs",
+    "infra:up": "docker compose up -d redis",
+    "infra:up:local-db": "docker compose --profile local-db up -d mongo redis",
     "infra:down": "docker compose down",
     "prepare": "husky || true"
   },

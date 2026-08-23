@@ -8,8 +8,16 @@ export default () => ({
   port: parseInt(process.env.PORT ?? process.env.BACKEND_PORT ?? '3333', 10),
 
   mongo: {
-    uri: process.env.MONGO_URI ?? 'mongodb://localhost:27017/tecnoplus',
-    dbName: process.env.MONGO_DB_NAME ?? 'tecnoplus',
+    uri: process.env.MONGODB_URI ?? process.env.MONGO_URI ?? '',
+    dbName: process.env.MONGODB_DATABASE ?? process.env.MONGO_DB_NAME ?? 'tecnoplus',
+    minPoolSize: parseInt(process.env.MONGODB_MIN_POOL_SIZE ?? '0', 10),
+    maxPoolSize: parseInt(process.env.MONGODB_MAX_POOL_SIZE ?? '10', 10),
+    serverSelectionTimeoutMS: parseInt(
+      process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? '10000',
+      10,
+    ),
+    connectTimeoutMS: parseInt(process.env.MONGODB_CONNECT_TIMEOUT_MS ?? '10000', 10),
+    socketTimeoutMS: parseInt(process.env.MONGODB_SOCKET_TIMEOUT_MS ?? '45000', 10),
   },
 
   jwt: {
@@ -48,6 +56,22 @@ export default () => ({
     // Usado só pra montar o link https://t.me/<usuario>?start=... no site
     // (vínculo de chat do fornecedor). Sem ele, o site mostra só o código.
     botUsername: process.env.TELEGRAM_BOT_USERNAME ?? '',
+  },
+
+  whatsapp: {
+    baseUrl: process.env.WPPCONNECT_BASE_URL ?? 'http://localhost:21465',
+    session: process.env.WPPCONNECT_SESSION ?? 'tecnoplus',
+    secretKey: process.env.WPPCONNECT_SECRET_KEY ?? '',
+    token: process.env.WPPCONNECT_TOKEN ?? '',
+    webhookUrl: process.env.WPPCONNECT_WEBHOOK_URL ?? '',
+    webhookSecret: process.env.WPPCONNECT_WEBHOOK_SECRET ?? '',
+    productLinkBaseUrl:
+      process.env.WPPCONNECT_PRODUCT_LINK_BASE_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      process.env.CORS_ORIGIN?.split(',')[0]?.trim() ??
+      'http://localhost:3000',
+    maxPhonesPerBlast: parseInt(process.env.WPPCONNECT_MAX_PHONES_PER_BLAST ?? '50', 10),
+    maxProductsPerBlast: parseInt(process.env.WPPCONNECT_MAX_PRODUCTS_PER_BLAST ?? '10', 10),
   },
 
   supabase: {

@@ -23,7 +23,12 @@ async function bootstrap() {
   const marketingScheduler = app.get(MarketingPublishScheduler);
   const marketingAutoScheduler = app.get(MarketingAutoScheduler);
 
-  await bot.start();
+  const started = await bot.start();
+  if (!started) {
+    logger.error('Bot do Telegram não iniciou; verifique TELEGRAM_BOT_TOKEN.');
+    await app.close();
+    process.exit(1);
+  }
   scheduler.start();
   marketingScheduler.start();
   marketingAutoScheduler.start();

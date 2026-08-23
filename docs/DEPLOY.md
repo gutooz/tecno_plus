@@ -29,7 +29,7 @@ Você já está criando — só garanta:
 - Cluster free (M0).
 - Um usuário de banco com senha.
 - Network Access liberado para `0.0.0.0/0` (o Render usa IPs dinâmicos).
-- Copie a connection string (`mongodb+srv://...`) → vai virar `MONGO_URI`.
+- Copie a connection string (`mongodb+srv://...`) → vai virar `MONGODB_URI`.
 
 ## 2. Redis grátis (Upstash)
 
@@ -60,7 +60,8 @@ imagem — ok só para teste rápido).
    ajustes de produção:
    ```
    NODE_ENV=production
-   MONGO_URI=<connection string do Atlas>
+   MONGODB_URI=<connection string do Atlas>
+   MONGODB_DATABASE=tecnoplus
    REDIS_HOST=<endpoint upstash>
    REDIS_PORT=6379
    REDIS_PASSWORD=<senha upstash>
@@ -118,7 +119,7 @@ bot começa a responder normalmente — sem passo extra.
 
 ## Checklist rápido
 
-- [ ] Atlas: cluster criado, IP liberado, `MONGO_URI` em mãos
+- [ ] Atlas: cluster criado, IP liberado, `MONGODB_URI` em mãos
 - [ ] Upstash: `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS=true`
 - [ ] Supabase Storage configurado (ou aceitar modo no-op)
 - [ ] Backend deployado no Render (Docker, free tier) com todas as env vars

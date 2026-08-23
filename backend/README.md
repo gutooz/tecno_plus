@@ -24,8 +24,8 @@ uvicorn app.main:create_app --factory --reload --port 8000
 Use o MongoDB ja definido no `.env` da raiz:
 
 ```env
-MONGO_URI=mongodb://localhost:27017/tecnoplus
-MONGO_DB_NAME=tecnoplus
+MONGODB_URI=mongodb+srv://app_production:senha-forte@cluster.mongodb.net/tecnoplus?retryWrites=true&w=majority
+MONGODB_DATABASE=tecnoplus
 JWT_SECRET=...
 JWT_REFRESH_SECRET=...
 ```

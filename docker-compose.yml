@@ -6,12 +6,13 @@ services:
     image: mongo:7
     container_name: tecnoplus-mongo
     restart: unless-stopped
+    profiles: ['local-db']
     ports:
-      - "27017:27017"
+      - '27017:27017'
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,18 +22,45 @@ services:
     container_name: tecnoplus-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
+      - '6379:6379'
+    command: ['redis-server', '--appendonly', 'yes']
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
 
+  wppconnect:
+    image: wppconnect/wppconnect-server:${WPP_SERVER_TAG:-latest}
+    container_name: tecnoplus-wppconnect
+    restart: unless-stopped
+    profiles: ['whatsapp']
+    environment:
+      SECRET_KEY: ${WPPCONNECT_SECRET_KEY:-troque-por-um-segredo-do-wppconnect}
+      PORT: 21465
+      WEBHOOK_URL: ${WPPCONNECT_WEBHOOK_URL:-}
+      START_ALL_SESSIONS: 'true'
+      TOKEN_STORE_TYPE: file
+      CUSTOM_USER_DATA_DIR: /usr/src/wpp-server/userDataDir
+    ports:
+      - '21465:21465'
+    volumes:
+      - wppconnect-tokens:/usr/src/wpp-server/tokens
+      - wppconnect-user-data:/usr/src/wpp-server/userDataDir
+      - wppconnect-uploads:/usr/src/wpp-server/uploads
+      - wppconnect-images:/usr/src/wpp-server/WhatsAppImages
+      - wppconnect-logs:/usr/src/wpp-server/log
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:$${PORT:-21465}/healthz || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   backend:
-    profiles: ["apps"]
+    profiles: ['apps']
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
@@ -40,18 +68,15 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      MONGO_URI: mongodb://mongo:27017/tecnoplus
       REDIS_HOST: redis
     depends_on:
-      mongo:
-        condition: service_healthy
       redis:
         condition: service_healthy
     ports:
-      - "3333:3333"
+      - '3333:3333'
 
   python-backend:
-    profiles: ["python"]
+    profiles: ['python']
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -60,15 +85,11 @@ services:
     env_file: .env
     environment:
       PY_BACKEND_PORT: 8000
-      MONGO_URI: mongodb://mongo:27017/tecnoplus
-    depends_on:
-      mongo:
-        condition: service_healthy
     ports:
-      - "8000:8000"
+      - '8000:8000'
 
   frontend:
-    profiles: ["apps"]
+    profiles: ['apps']
     build:
       context: .
       dockerfile: apps/frontend/Dockerfile
@@ -80,8 +101,13 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:3000"
+      - '3000:3000'
 
 volumes:
   mongo-data:
   redis-data:
+  wppconnect-tokens:
+  wppconnect-user-data:
+  wppconnect-uploads:
+  wppconnect-images:
+  wppconnect-logs:
