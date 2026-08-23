@@ -1,19 +1,26 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  Box,
   Check,
+  CheckCircle2,
+  ClipboardList,
   Copy,
   ImagePlus,
+  Images,
   Link2,
+  ListChecks,
   PackageOpen,
   Plus,
   Save,
   Search,
   Send,
+  Tags,
   Trash2,
+  Truck,
   Unlink,
   UploadCloud,
   X,
@@ -735,6 +742,9 @@ function ProductForm({
     supplierSku: '',
     category: '',
     brand: '',
+    images: '',
+    videoUrl: '',
+    shortDescription: '',
     costPrice: '',
     suggestedPrice: '',
     stock: '',
@@ -745,92 +755,501 @@ function ProductForm({
     height: '',
     gtin: '',
     description: '',
+    variationName: '',
+    variationOptions: '',
+    condition: 'new',
+    preOrder: false,
+    daysToShip: '',
+    allowSellers: true,
+    shippingChannels: '',
   });
+
+  const imageUrls = parseLines(form.images);
+  const variationOptions = parseLines(form.variationOptions);
+  const completedSections = [
+    Boolean(form.name.trim() && form.category.trim()),
+    Boolean(imageUrls.length || form.videoUrl.trim()),
+    Boolean(form.description.trim().length >= 10),
+    Boolean(form.suggestedPrice && form.stock),
+    Boolean(form.weight && form.length && form.width && form.height),
+  ].filter(Boolean).length;
+  const completeness = Math.round((completedSections / 5) * 100);
+  const canSubmit =
+    form.name.trim() &&
+    form.supplierSku.trim() &&
+    form.category.trim() &&
+    form.suggestedPrice &&
+    form.stock &&
+    form.weight &&
+    form.length &&
+    form.width &&
+    form.height;
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const length = Number(form.length.replace(',', '.'));
-    const width = Number(form.width.replace(',', '.'));
-    const height = Number(form.height.replace(',', '.'));
+    const length = parseDecimal(form.length);
+    const width = parseDecimal(form.width);
+    const height = parseDecimal(form.height);
     const hasDims = form.length && form.width && form.height;
     onSubmit({
-      ...form,
-      costPrice: Number(form.costPrice),
-      suggestedPrice: Number(form.suggestedPrice),
-      stock: Number(form.stock),
-      minStock: Number(form.minStock),
-      weight: form.weight ? Number(form.weight.replace(',', '.')) : undefined,
+      name: form.name.trim(),
+      supplierSku: form.supplierSku.trim(),
+      category: form.category.trim(),
+      brand: form.brand.trim(),
+      images: imageUrls,
+      videoUrl: form.videoUrl.trim(),
+      shortDescription: form.shortDescription.trim(),
+      description: form.description.trim(),
+      costPrice: parseDecimal(form.costPrice),
+      suggestedPrice: parseDecimal(form.suggestedPrice),
+      stock: parseIntNumber(form.stock),
+      minStock: parseIntNumber(form.minStock),
+      weight: form.weight ? parseDecimal(form.weight) : undefined,
       dimensions: hasDims ? { length, width, height } : undefined,
-      variations: [],
+      gtin: form.gtin.trim(),
+      variations: parseVariations(form.variationName, variationOptions),
+      shipping: {
+        channels: parseLines(form.shippingChannels),
+        condition: form.condition,
+        preOrder: form.preOrder,
+        daysToShip: form.preOrder ? parseIntNumber(form.daysToShip) : undefined,
+      },
+      allowSellers: form.allowSellers,
+      status: form.allowSellers ? 'active' : 'inactive',
     });
   }
 
   return (
-    <Card className="mb-4">
-      <form onSubmit={submit} className="grid gap-3 md:grid-cols-4">
-        {[
-          ['name', 'Nome do produto'],
-          ['supplierSku', 'SKU interno'],
-          ['category', 'Categoria'],
-          ['brand', 'Marca'],
-          ['costPrice', 'Preço de custo'],
-          ['suggestedPrice', 'Preço sugerido'],
-          ['stock', 'Estoque'],
-          ['minStock', 'Estoque mínimo'],
-          ['weight', 'Peso (kg) — obrigatório p/ Shopee'],
-          ['gtin', 'GTIN/EAN (código de barras)'],
-        ].map(([key, label]) => (
-          <Input
-            key={key}
-            required={key === 'name' || key === 'supplierSku'}
-            placeholder={label}
-            value={form[key as keyof typeof form]}
-            onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-            type={
-              key.toLowerCase().includes('price') ||
-              key === 'stock' ||
-              key === 'minStock' ||
-              key === 'weight'
-                ? 'number'
-                : 'text'
-            }
-          />
-        ))}
-        <div className="md:col-span-4">
-          <p className="mb-1 text-xs text-muted">Dimensões do pacote — C × L × A (cm)</p>
-          <div className="grid grid-cols-3 gap-2 md:max-w-md">
-            <Input
-              placeholder="Comprimento"
-              value={form.length}
-              onChange={(e) => setForm((f) => ({ ...f, length: e.target.value }))}
-            />
-            <Input
-              placeholder="Largura"
-              value={form.width}
-              onChange={(e) => setForm((f) => ({ ...f, width: e.target.value }))}
-            />
-            <Input
-              placeholder="Altura"
-              value={form.height}
-              onChange={(e) => setForm((f) => ({ ...f, height: e.target.value }))}
-            />
+    <Card className="mb-5 overflow-hidden p-0">
+      <form onSubmit={submit}>
+        <div className="border-b border-border bg-surface-2/60 px-5 py-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-fg">Novo produto</p>
+              <p className="mt-1 text-xs text-muted">
+                Preencha os dados na ordem em que eles serão usados na publicação.
+              </p>
+            </div>
+            <div className="w-full lg:w-64">
+              <div className="mb-1.5 flex items-center justify-between text-xs">
+                <span className="font-medium text-muted">Ficha completa</span>
+                <span className="nums font-semibold text-fg">{completeness}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-surface-3">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-300"
+                  style={{ width: `${completeness}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
-        <div className="md:col-span-4">
-          <Input
-            placeholder="Descrição resumida"
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-          />
-        </div>
-        <div className="md:col-span-4">
-          <Button loading={loading} type="submit">
-            Salvar produto
-          </Button>
+
+        <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="divide-y divide-border">
+            <FormSection
+              number="1"
+              icon={<ClipboardList size={18} />}
+              title="Informações básicas"
+              done={Boolean(form.name.trim() && form.category.trim())}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Nome do produto" required className="sm:col-span-2">
+                  <Input
+                    required
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="Ex.: Fone Bluetooth sem fio com estojo carregador"
+                  />
+                </Field>
+                <Field label="Categoria Shopee" required>
+                  <Input
+                    required
+                    value={form.category}
+                    onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                    placeholder="Eletrônicos > Áudio"
+                  />
+                </Field>
+                <Field label="Marca">
+                  <Input
+                    value={form.brand}
+                    onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+                    placeholder="Sem marca, OEM ou nome da marca"
+                  />
+                </Field>
+                <Field label="SKU do fornecedor" required>
+                  <Input
+                    required
+                    value={form.supplierSku}
+                    onChange={(e) => setForm((f) => ({ ...f, supplierSku: e.target.value }))}
+                    placeholder="SKU-001"
+                  />
+                </Field>
+                <Field label="GTIN/EAN">
+                  <Input
+                    value={form.gtin}
+                    onChange={(e) => setForm((f) => ({ ...f, gtin: e.target.value }))}
+                    placeholder="Código de barras, quando houver"
+                  />
+                </Field>
+              </div>
+            </FormSection>
+
+            <FormSection
+              number="2"
+              icon={<Images size={18} />}
+              title="Mídia"
+              done={Boolean(imageUrls.length || form.videoUrl.trim())}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field
+                  label="Fotos do produto"
+                  hint="Cole uma URL por linha. A primeira URL será usada como capa."
+                  className="sm:col-span-2"
+                >
+                  <TextArea
+                    rows={4}
+                    value={form.images}
+                    onChange={(e) => setForm((f) => ({ ...f, images: e.target.value }))}
+                    placeholder={
+                      'https://exemplo.com/foto-capa.jpg\nhttps://exemplo.com/foto-detalhe.jpg'
+                    }
+                  />
+                </Field>
+                <Field label="Vídeo">
+                  <Input
+                    value={form.videoUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, videoUrl: e.target.value }))}
+                    placeholder="URL do vídeo do produto"
+                  />
+                </Field>
+                <Field label="Resumo curto">
+                  <Input
+                    value={form.shortDescription}
+                    onChange={(e) => setForm((f) => ({ ...f, shortDescription: e.target.value }))}
+                    placeholder="Frase curta para vitrine e catálogo"
+                  />
+                </Field>
+              </div>
+            </FormSection>
+
+            <FormSection
+              number="3"
+              icon={<ListChecks size={18} />}
+              title="Descrição e especificações"
+              done={form.description.trim().length >= 10}
+            >
+              <Field
+                label="Descrição do produto"
+                required
+                hint="Inclua material, conteúdo da embalagem, medidas de uso, compatibilidade e diferenciais."
+              >
+                <TextArea
+                  required
+                  rows={7}
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Descreva o produto com detalhes suficientes para o comprador decidir sem perguntar no chat."
+                />
+              </Field>
+            </FormSection>
+
+            <FormSection
+              number="4"
+              icon={<Tags size={18} />}
+              title="Vendas, preço e variações"
+              done={Boolean(form.suggestedPrice && form.stock)}
+            >
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Preço de custo">
+                  <Input
+                    inputMode="decimal"
+                    value={form.costPrice}
+                    onChange={(e) => setForm((f) => ({ ...f, costPrice: e.target.value }))}
+                    placeholder="18,50"
+                  />
+                </Field>
+                <Field label="Preço sugerido" required>
+                  <Input
+                    required
+                    inputMode="decimal"
+                    value={form.suggestedPrice}
+                    onChange={(e) => setForm((f) => ({ ...f, suggestedPrice: e.target.value }))}
+                    placeholder="39,90"
+                  />
+                </Field>
+                <Field label="Estoque" required>
+                  <Input
+                    required
+                    inputMode="numeric"
+                    value={form.stock}
+                    onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                    placeholder="100"
+                  />
+                </Field>
+                <Field label="Estoque mínimo">
+                  <Input
+                    inputMode="numeric"
+                    value={form.minStock}
+                    onChange={(e) => setForm((f) => ({ ...f, minStock: e.target.value }))}
+                    placeholder="5"
+                  />
+                </Field>
+                <Field label="Nome da variação">
+                  <Input
+                    value={form.variationName}
+                    onChange={(e) => setForm((f) => ({ ...f, variationName: e.target.value }))}
+                    placeholder="Cor, tamanho, voltagem"
+                  />
+                </Field>
+                <Field
+                  label="Opções da variação"
+                  hint="Separe por linha ou vírgula. Ex.: Preto, Branco, Azul."
+                  className="sm:col-span-2 lg:col-span-3"
+                >
+                  <Input
+                    value={form.variationOptions}
+                    onChange={(e) => setForm((f) => ({ ...f, variationOptions: e.target.value }))}
+                    placeholder="Preto, Branco, Azul"
+                  />
+                </Field>
+              </div>
+            </FormSection>
+
+            <FormSection
+              number="5"
+              icon={<Truck size={18} />}
+              title="Envio e pacote"
+              done={Boolean(form.weight && form.length && form.width && form.height)}
+            >
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Peso embalado (kg)" required>
+                  <Input
+                    required
+                    inputMode="decimal"
+                    value={form.weight}
+                    onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
+                    placeholder="0,35"
+                  />
+                </Field>
+                <Field label="Comprimento (cm)" required>
+                  <Input
+                    required
+                    inputMode="decimal"
+                    value={form.length}
+                    onChange={(e) => setForm((f) => ({ ...f, length: e.target.value }))}
+                    placeholder="20"
+                  />
+                </Field>
+                <Field label="Largura (cm)" required>
+                  <Input
+                    required
+                    inputMode="decimal"
+                    value={form.width}
+                    onChange={(e) => setForm((f) => ({ ...f, width: e.target.value }))}
+                    placeholder="15"
+                  />
+                </Field>
+                <Field label="Altura (cm)" required>
+                  <Input
+                    required
+                    inputMode="decimal"
+                    value={form.height}
+                    onChange={(e) => setForm((f) => ({ ...f, height: e.target.value }))}
+                    placeholder="8"
+                  />
+                </Field>
+                <Field label="Condição">
+                  <select
+                    value={form.condition}
+                    onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))}
+                    className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-fg outline-none transition-all duration-200 ease-out-soft focus:border-primary focus:ring-4 focus:ring-primary/15"
+                  >
+                    <option value="new">Novo</option>
+                    <option value="used">Usado</option>
+                  </select>
+                </Field>
+                <Field label="Canais de envio">
+                  <Input
+                    value={form.shippingChannels}
+                    onChange={(e) => setForm((f) => ({ ...f, shippingChannels: e.target.value }))}
+                    placeholder="Correios, Shopee Xpress"
+                  />
+                </Field>
+                <label className="flex min-h-10 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-sm text-fg">
+                  <input
+                    type="checkbox"
+                    checked={form.preOrder}
+                    onChange={(e) => setForm((f) => ({ ...f, preOrder: e.target.checked }))}
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+                  />
+                  Pré-venda
+                </label>
+                <Field label="Dias para envio">
+                  <Input
+                    inputMode="numeric"
+                    disabled={!form.preOrder}
+                    value={form.daysToShip}
+                    onChange={(e) => setForm((f) => ({ ...f, daysToShip: e.target.value }))}
+                    placeholder="7 a 30"
+                  />
+                </Field>
+              </div>
+            </FormSection>
+          </div>
+
+          <aside className="border-t border-border bg-surface-2/40 p-5 lg:border-l lg:border-t-0">
+            <div className="sticky top-20 space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-fg">Checklist Shopee</p>
+                <p className="mt-1 text-xs text-muted">
+                  Campos que mais impactam aprovação, frete e publicação.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <SectionStatus label="Básico" done={Boolean(form.name && form.category)} />
+                <SectionStatus
+                  label="Fotos ou vídeo"
+                  done={Boolean(imageUrls.length || form.videoUrl)}
+                />
+                <SectionStatus label="Descrição" done={form.description.trim().length >= 10} />
+                <SectionStatus
+                  label="Preço e estoque"
+                  done={Boolean(form.suggestedPrice && form.stock)}
+                />
+                <SectionStatus
+                  label="Peso e dimensões"
+                  done={Boolean(form.weight && form.length && form.width && form.height)}
+                />
+              </div>
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-surface p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.allowSellers}
+                  onChange={(e) => setForm((f) => ({ ...f, allowSellers: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+                />
+                <span>
+                  <span className="block font-medium text-fg">Liberar no catálogo</span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    Quando ativo, vendedores podem importar o produto para preparar o anúncio.
+                  </span>
+                </span>
+              </label>
+              <Button className="w-full" loading={loading} disabled={!canSubmit} type="submit">
+                {!loading && <Save size={15} />}
+                Salvar produto
+              </Button>
+            </div>
+          </aside>
         </div>
       </form>
     </Card>
   );
+}
+
+function FormSection({
+  number,
+  icon,
+  title,
+  done,
+  children,
+}: {
+  number: string;
+  icon: ReactNode;
+  title: string;
+  done: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className="grid gap-4 p-5 md:grid-cols-[12rem_minmax(0,1fr)]">
+      <div className="flex gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          {icon}
+        </span>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+            Etapa {number}
+          </p>
+          <h2 className="mt-0.5 text-sm font-semibold text-fg">{title}</h2>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+            {done ? <CheckCircle2 size={13} className="text-success" /> : <Box size={13} />}
+            {done ? 'Completa' : 'Pendente'}
+          </p>
+        </div>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function Field({
+  label,
+  required,
+  hint,
+  className,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className={cn('block', className)}>
+      <span className="mb-1.5 block text-xs font-medium text-muted">
+        {label}
+        {required && <span className="text-danger"> *</span>}
+      </span>
+      {children}
+      {hint && <span className="mt-1.5 block text-xs text-faint">{hint}</span>}
+    </label>
+  );
+}
+
+function TextArea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={cn(
+        'w-full resize-y rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-fg outline-none transition-all duration-200 ease-out-soft placeholder:text-faint focus:border-primary focus:ring-4 focus:ring-primary/15',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SectionStatus({ label, done }: { label: string; done: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2 text-xs">
+      <span className="text-muted">{label}</span>
+      <span className={cn('font-medium', done ? 'text-success' : 'text-faint')}>
+        {done ? 'ok' : 'faltando'}
+      </span>
+    </div>
+  );
+}
+
+function parseDecimal(value: string) {
+  return Number(value.replace(',', '.')) || 0;
+}
+
+function parseIntNumber(value: string) {
+  return Math.max(0, Math.trunc(parseDecimal(value)));
+}
+
+function parseLines(value: string) {
+  return value
+    .split(/[\n,]/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function parseVariations(name: string, options: string[]) {
+  const cleanName = name.trim();
+  if (!cleanName || options.length === 0) return [];
+  return [{ name: cleanName, options }];
 }
 
 function money(value: number) {
