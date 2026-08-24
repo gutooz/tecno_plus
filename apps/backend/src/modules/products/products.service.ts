@@ -163,6 +163,9 @@ export class ProductsService {
   async startPipeline(ownerId: string, id: string) {
     const doc = await this.findRawById(ownerId, id);
     if (!doc) throw new NotFoundException('Produto nÃ£o encontrado');
+    await this.model.collection.updateOne(this.productByOwnerFilter(ownerId, id), {
+      $set: { status: ProductStatus.PROCESSING },
+    });
     await this.queue.startPipeline({ productId: id, ownerId });
     return { queued: true };
   }
