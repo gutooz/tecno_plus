@@ -5,7 +5,7 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'Tecno Plus AI Catalog',
+  title: 'zycron',
   description: 'Cadastro inteligente de produtos com IA',
 };
 

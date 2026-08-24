@@ -1,4 +1,4 @@
-# Documentação Técnica — Tecno Plus AI Catalog
+# Documentação Técnica — zycron
 
 > Referência técnica de como o projeto está estruturado, quais linguagens e
 > tecnologias compõem cada camada, e como as peças se conectam em runtime.
@@ -29,7 +29,7 @@
 
 ## 1. Visão geral
 
-**Tecno Plus AI Catalog** é uma plataforma de cadastro automático de produtos
+**zycron** é uma plataforma de cadastro automático de produtos
 via IA: o operador envia a foto de um produto (pela web ou por um bot do
 Telegram) e uma cadeia de **7 agentes** identifica o item, estima peso/medidas,
 pesquisa preço de mercado, gera título/descrição, trata as imagens, precifica

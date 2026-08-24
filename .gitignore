@@ -47,6 +47,9 @@ coverage/
 tokens/
 userDataDir/
 
+# Local database backups may contain user data or token/password hashes.
+database/backups/
+
 # Temp
 tmp/
 *.tmp

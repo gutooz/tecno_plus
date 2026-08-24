@@ -24,7 +24,7 @@ async function bootstrap() {
   );
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Tecno Plus AI Catalog API')
+    .setTitle('zycron API')
     .setDescription('API do MVP de cadastro inteligente de produtos com IA')
     .setVersion('0.1.0')
     .addBearerAuth()

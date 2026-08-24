@@ -53,7 +53,18 @@ export class WppConnectClient {
   }
 
   async logoutSession() {
-    return this.request('POST', '/logout-session');
+    try {
+      return await this.request('POST', '/logout-session', undefined, false);
+    } catch (error) {
+      this.logger.warn(
+        `WPPConnect logout-session falhou; tentando close-session: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return this.request('POST', '/close-session', undefined, false);
+    } finally {
+      this.cachedToken = '';
+    }
   }
 
   async checkNumberStatus(phone: string) {

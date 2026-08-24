@@ -8,9 +8,9 @@ import { Integrations } from '@/components/landing/integrations';
 import { SiteFooter } from '@/components/landing/site-footer';
 
 export const metadata: Metadata = {
-  title: 'Tecno Plus — Dropshipping entre fornecedores e vendedores',
+  title: 'zycron — Dropshipping entre fornecedores e vendedores',
   description:
-    'A Tecno Plus conecta fornecedores e vendedores em uma única plataforma para cadastrar produtos, publicar em marketplaces, receber pedidos e organizar toda a operação de dropshipping.',
+    'A zycron conecta fornecedores e vendedores em uma única plataforma para cadastrar produtos, publicar em marketplaces, receber pedidos e organizar toda a operação de dropshipping.',
 };
 
 export default function Home() {

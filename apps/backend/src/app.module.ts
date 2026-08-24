@@ -20,6 +20,8 @@ import { DropshippingModule } from './modules/dropshipping/dropshipping.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
+import { AsaasModule } from './modules/asaas/asaas.module';
+import { MercadoPagoModule } from './modules/mercado-pago/mercado-pago.module';
 
 /**
  * Módulo raiz. Ordem de importação: infra global (config, db, storage, ai,
@@ -76,6 +78,8 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
     OpsModule,
     HealthModule,
     IntegrationsModule,
+    AsaasModule,
+    MercadoPagoModule,
     DropshippingModule,
     TelegramModule,
     MarketingModule,

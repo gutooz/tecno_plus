@@ -265,7 +265,12 @@ export const api = {
   /** Mesmo mecanismo do `upload()` (progresso + retry de token via XHR), mas
    * apontando pra qualquer endpoint multipart — usado pelo cadastro por foto
    * do fornecedor (`/dropshipping/supplier/products/photos`). */
-  uploadTo<T>(path: string, files: File[], onProgress?: (pct: number) => void): Promise<T> {
-    return uploadFiles<T>(`${BASE}/api${path}`, files, onProgress);
+  uploadTo<T>(
+    path: string,
+    files: File[],
+    onProgress?: (pct: number) => void,
+    extraFields?: Record<string, string | undefined>,
+  ): Promise<T> {
+    return uploadFiles<T>(`${BASE}/api${path}`, files, onProgress, extraFields);
   },
 };

@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Design System — Tecno Plus.
+ * Design System — zycron.
  * Inspirado em Apple HIG / iOS / Linear / Stripe: raios generosos, tipografia
  * Geist, elevação em camadas suaves, motion com easing Apple. Cores vêm de CSS
  * variables (globals.css) para dark/light corretos.

@@ -247,7 +247,7 @@ function buildReadmeSheet(wb: ExcelJS.Workbook, params: BuildWorkbookParams): vo
 export async function buildWorkbook(params: BuildWorkbookParams): Promise<Buffer> {
   const { template } = params;
   const wb = template.officialWorkbook ?? new ExcelJS.Workbook();
-  wb.creator = 'Tecno Plus — Exportador Shopee';
+  wb.creator = 'zycron — Exportador Shopee';
   wb.created = new Date(params.generatedAtISO);
 
   if (template.source === 'official-file' && template.officialWorksheet) {

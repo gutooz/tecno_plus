@@ -2,7 +2,9 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -13,8 +15,10 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { CurrentUser, JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthUser } from '../auth/jwt.strategy';
+import { MercadoPagoApiClient } from '../mercado-pago/mercado-pago.client';
 import { DropshippingService } from './dropshipping.service';
 
 // tipo mínimo do arquivo do Multer (evita depender de @types global)
@@ -248,10 +252,45 @@ export class DropshippingController {
 @ApiTags('dropshipping')
 @Controller('dropshipping/asaas')
 export class AsaasWebhookController {
-  constructor(private readonly dropshipping: DropshippingService) {}
+  constructor(
+    private readonly dropshipping: DropshippingService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Post('webhook')
-  webhook(@Body() body: Record<string, unknown>) {
+  webhook(
+    @Body() body: Record<string, unknown>,
+    @Headers('asaas-access-token') accessToken?: string,
+  ) {
+    const expected = this.config.get<string>('asaas.webhookToken') ?? '';
+    if (expected && accessToken !== expected) {
+      throw new ForbiddenException('Webhook Asaas com token inválido.');
+    }
     return this.dropshipping.asaasWebhook(body);
+  }
+}
+
+@ApiTags('dropshipping')
+@Controller('dropshipping/mercado-pago')
+export class MercadoPagoWebhookController {
+  constructor(
+    private readonly dropshipping: DropshippingService,
+    private readonly mercadoPago: MercadoPagoApiClient,
+  ) {}
+
+  @Post('webhook')
+  webhook(
+    @Body() body: Record<string, unknown>,
+    @Query() query: Record<string, string | undefined>,
+    @Headers('x-signature') xSignature?: string,
+    @Headers('x-request-id') xRequestId?: string,
+  ) {
+    const data =
+      body.data && typeof body.data === 'object' && !Array.isArray(body.data)
+        ? (body.data as Record<string, unknown>)
+        : {};
+    const dataId = String(query['data.id'] ?? data.id ?? '');
+    this.mercadoPago.verifyWebhookSignature({ xSignature, xRequestId, dataId });
+    return this.dropshipping.mercadoPagoWebhook(body, query);
   }
 }

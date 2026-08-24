@@ -17,6 +17,33 @@ services:
       - caddy-data:/data
       - caddy-config:/config
 
+  wppconnect:
+    image: wppconnect/wppconnect-server:${WPP_SERVER_TAG:-latest}
+    container_name: tecno-plus-wppconnect
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SECRET_KEY: ${WPPCONNECT_SECRET_KEY:?WPPCONNECT_SECRET_KEY deve ser configurado}
+      PORT: 21465
+      WEBHOOK_URL: ${WPPCONNECT_WEBHOOK_URL:-}
+      START_ALL_SESSIONS: 'true'
+      TOKEN_STORE_TYPE: file
+      CUSTOM_USER_DATA_DIR: /usr/src/wpp-server/userDataDir
+    volumes:
+      - wppconnect-tokens:/usr/src/wpp-server/tokens
+      - wppconnect-user-data:/usr/src/wpp-server/userDataDir
+      - wppconnect-uploads:/usr/src/wpp-server/uploads
+      - wppconnect-images:/usr/src/wpp-server/WhatsAppImages
+      - wppconnect-logs:/usr/src/wpp-server/log
+    expose:
+      - '21465'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:$${PORT:-21465}/healthz || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   backend:
     image: tecno-plus-backend:latest
     build:
@@ -70,3 +97,8 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+  wppconnect-tokens:
+  wppconnect-user-data:
+  wppconnect-uploads:
+  wppconnect-images:
+  wppconnect-logs:

@@ -250,6 +250,7 @@ export default function AdminWhatsAppPage() {
             <Button
               size="sm"
               variant="outline"
+              disabled={!connected}
               loading={logout.isPending}
               onClick={() => confirm('Desconectar o WhatsApp?') && logout.mutate()}
             >

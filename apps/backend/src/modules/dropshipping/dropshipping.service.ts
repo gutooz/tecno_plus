@@ -44,26 +44,11 @@ import {
   SyncJobDocument,
 } from '../database/schemas/dropshipping.schema';
 import { User, UserDocument } from '../database/schemas/user.schema';
+import { AsaasApiClient } from '../asaas/asaas.client';
+import { MercadoPagoApiClient } from '../mercado-pago/mercado-pago.client';
 import { ShopeeProvider } from './marketplaces/shopee.provider';
 
 type AnyRecord = Record<string, unknown>;
-
-interface AsaasCustomer {
-  id: string;
-}
-
-interface AsaasPayment {
-  id: string;
-  status?: string;
-  invoiceUrl?: string;
-  bankSlipUrl?: string;
-}
-
-interface AsaasPixQrCode {
-  encodedImage?: string;
-  payload?: string;
-  expirationDate?: string;
-}
 
 interface PlatformFeeRule {
   upTo: number;
@@ -321,6 +306,8 @@ export class DropshippingService {
     private readonly shopee: ShopeeProvider,
     private readonly storage: StorageService,
     private readonly config: ConfigService,
+    private readonly asaas: AsaasApiClient,
+    private readonly mercadoPago: MercadoPagoApiClient,
   ) {}
 
   async me(user: AuthUser) {
@@ -1781,20 +1768,15 @@ export class DropshippingService {
       .lean();
     const sellerProfile = await this.sellerProfiles.findOne({ userId: user.id }).lean();
     const customerId = await this.ensureAsaasCustomer(user, seller, sellerProfile);
-    const payment = await this.asaasRequest<AsaasPayment>('/payments', {
-      method: 'POST',
-      body: {
-        customer: customerId,
-        billingType: 'PIX',
-        value: amounts.sellerChargeAmount,
-        dueDate: dateOnly(),
-        description: `Pagamento do pedido ${String(objectFrom(entry.metadata).externalOrderId ?? entry.supplierOrderId)} - fornecedor + taxa Tecno Plus`,
-        externalReference,
-      },
+    const payment = await this.asaas.createPayment({
+      customer: customerId,
+      billingType: 'PIX',
+      value: amounts.sellerChargeAmount,
+      dueDate: dateOnly(),
+      description: `Pagamento do pedido ${String(objectFrom(entry.metadata).externalOrderId ?? entry.supplierOrderId)} - fornecedor + taxa zycron`,
+      externalReference,
     });
-    const pixQrCode = await this.asaasRequest<AsaasPixQrCode>(
-      `/payments/${encodeURIComponent(payment.id)}/pixQrCode`,
-    );
+    const pixQrCode = await this.asaas.getPaymentPixQrCode(payment.id);
 
     entry.gatewayPaymentId = payment.id;
     entry.gatewayCustomerId = customerId;
@@ -1845,6 +1827,39 @@ export class DropshippingService {
     return { ok: true };
   }
 
+  async mercadoPagoWebhook(body: AnyRecord, query: AnyRecord = {}) {
+    const bodyData = objectFrom(body.data);
+    const paymentId =
+      firstText(query, ['data.id', 'id']) ||
+      firstText(bodyData, ['id']) ||
+      (firstText(body, ['type', 'topic']) === 'payment' ? firstText(body, ['id']) : '');
+    if (!paymentId) return { ok: true, ignored: true };
+
+    const payment = await this.mercadoPago.getPayment(paymentId);
+    const externalReference = String(payment.external_reference ?? '');
+    const status = this.statusFromMercadoPago(String(payment.status ?? ''));
+    const filter = payment.id
+      ? { gatewayPaymentId: String(payment.id) }
+      : externalReference
+        ? { 'metadata.externalReference': externalReference }
+        : null;
+    if (!filter) return { ok: true, ignored: true };
+
+    const set: AnyRecord = {
+      status,
+      gateway: 'mercado_pago',
+      metadata: {
+        ...objectFrom(body),
+        mercadoPagoStatus: payment.status,
+        mercadoPagoStatusDetail: payment.status_detail,
+        externalReference,
+      },
+    };
+    if (status === 'paid') set.paidAt = new Date();
+    await this.financialEntries.updateOne(filter, { $set: set });
+    return { ok: true };
+  }
+
   async adminDashboard(user: AuthUser) {
     this.requireRole(user, ['admin']);
     const [suppliersPending, sellersPending, exceptions, disconnected, syncPending] =
@@ -1872,7 +1887,7 @@ export class DropshippingService {
         $setOnInsert: {
           ownerUserId: 'platform',
           type: 'admin',
-          name: 'Tecno Plus',
+          name: 'zycron',
           status: 'approved',
         },
         $set: { 'settings.platformFeeRules': rules },
@@ -2087,47 +2102,21 @@ export class DropshippingService {
     if (!cpfCnpj) {
       throw new BadRequestException('Informe CNPJ/CPF do vendedor antes de gerar cobrança Asaas.');
     }
-    const customer = await this.asaasRequest<AsaasCustomer>('/customers', {
-      method: 'POST',
-      body: {
-        name:
-          firstText(storeProfile, ['storeName', 'name']) ||
-          String(account?.name ?? account?.email ?? 'Vendedor'),
-        cpfCnpj,
-        email: String(account?.email ?? user.email),
-        mobilePhone: firstText(storeProfile, ['phone', 'mobilePhone']),
-        externalReference: user.id,
-        notificationDisabled: false,
-      },
+    const customer = await this.asaas.createCustomer({
+      name:
+        firstText(storeProfile, ['storeName', 'name']) ||
+        String(account?.name ?? account?.email ?? 'Vendedor'),
+      cpfCnpj,
+      email: String(account?.email ?? user.email),
+      mobilePhone: firstText(storeProfile, ['phone', 'mobilePhone']),
+      externalReference: user.id,
+      notificationDisabled: false,
     });
     await this.sellerProfiles.updateOne(
       { userId: user.id },
       { $set: { 'storeProfile.asaasCustomerId': customer.id } },
     );
     return customer.id;
-  }
-
-  private async asaasRequest<T>(
-    path: string,
-    options: { method?: string; body?: AnyRecord } = {},
-  ): Promise<T> {
-    const apiKey = this.config.get<string>('asaas.apiKey');
-    if (!apiKey) throw new BadRequestException('ASAAS_API_KEY não configurada.');
-    const baseUrl = (this.config.get<string>('asaas.baseUrl') ?? '').replace(/\/+$/, '');
-    const res = await fetch(`${baseUrl}${path}`, {
-      method: options.method ?? 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'TecnoPlus/1.0',
-        access_token: apiKey,
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => res.statusText);
-      throw new BadRequestException(`Asaas ${res.status}: ${text}`);
-    }
-    return (await res.json()) as T;
   }
 
   private statusFromAsaas(status: string): string {
@@ -2150,6 +2139,14 @@ export class DropshippingService {
       return 'canceled';
     }
     if (['OVERDUE'].includes(status)) return 'awaiting_confirmation';
+    return 'awaiting_confirmation';
+  }
+
+  private statusFromMercadoPago(status: string): string {
+    if (status === 'approved') return 'paid';
+    if (['cancelled', 'canceled', 'rejected'].includes(status)) return 'canceled';
+    if (status === 'refunded') return 'refunded';
+    if (status === 'charged_back' || status === 'in_mediation') return 'dispute';
     return 'awaiting_confirmation';
   }
 

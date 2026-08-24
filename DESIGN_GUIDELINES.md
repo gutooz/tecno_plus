@@ -1,4 +1,4 @@
-# Design Guidelines — Tecno Plus
+# Design Guidelines — zycron
 
 Source of truth for visual decisions across the frontend. Consult before adding
 a new screen, component, or style. Derived from what's already implemented in

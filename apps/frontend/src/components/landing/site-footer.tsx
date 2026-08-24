@@ -15,14 +15,14 @@ export function SiteFooter() {
           <span className="h-8 w-8 overflow-hidden rounded-2xl shadow-soft ring-1 ring-border/60">
             <Image
               src="/logo.jpg"
-              alt="Tecno Plus"
+              alt="zycron"
               width={32}
               height={32}
               className="h-full w-full object-cover"
             />
           </span>
           <span className="text-sm text-muted">
-            © {new Date().getFullYear()} Tecno Plus. Todos os direitos reservados.
+            © {new Date().getFullYear()} zycron. Todos os direitos reservados.
           </span>
         </div>
 

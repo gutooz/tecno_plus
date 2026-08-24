@@ -1,4 +1,4 @@
-# Tecno Plus AI Catalog
+# zycron
 
 Plataforma inteligente de **cadastro automático de produtos com IA** e
 **integração com marketplaces**. O operador fotografa centenas de produtos no

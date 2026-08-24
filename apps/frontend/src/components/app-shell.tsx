@@ -97,14 +97,14 @@ function Brand({ size = 'md' }: { size?: 'sm' | 'md' }) {
       >
         <Image
           src="/logo.jpg"
-          alt="Tecno Plus"
+          alt="zycron"
           width={dim}
           height={dim}
           className="h-full w-full object-cover"
         />
       </div>
       <div className="leading-tight">
-        <p className="text-sm font-semibold tracking-tight">Tecno Plus</p>
+        <p className="text-sm font-semibold tracking-tight">zycron</p>
         {size === 'md' && <p className="text-[11px] font-medium text-faint">AI Catalog</p>}
       </div>
     </div>

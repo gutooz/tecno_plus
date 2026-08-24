@@ -26,7 +26,7 @@ def create_app() -> FastAPI:
     configure_logging(settings)
 
     app = FastAPI(
-        title="Tecno Plus API",
+        title="zycron API",
         version="0.1.0",
         description="FastAPI backend for the incremental Python migration.",
         lifespan=lifespan,
@@ -47,4 +47,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

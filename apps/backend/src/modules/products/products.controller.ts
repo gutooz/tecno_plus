@@ -8,8 +8,11 @@ import {
   Put,
   Query,
   Res,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { MarketplaceChannel, ProductStatus } from '@tecnoplus/shared';
@@ -18,6 +21,12 @@ import type { AuthUser } from '../auth/jwt.strategy';
 import { ProductsService } from './products.service';
 import { encodeReportHeader } from './shopee';
 import { PublishService } from '../publish/publish.service';
+
+interface MulterFile {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+}
 
 type ProductStatusFilter = ProductStatus | 'all' | 'waiting';
 
@@ -96,6 +105,16 @@ export class ProductsController {
     @Body() body: { ids?: string[]; channel?: MarketplaceChannel },
   ) {
     return this.publish.publishBatch(user.id, body.ids ?? [], body.channel);
+  }
+
+  @Post('manual')
+  @UseInterceptors(FilesInterceptor('files', 9))
+  createManual(
+    @CurrentUser() user: AuthUser,
+    @UploadedFiles() files: MulterFile[],
+    @Body() body: Record<string, string | undefined>,
+  ) {
+    return this.products.createManualShopeeProduct(user.id, files ?? [], body);
   }
 
   @Post('regenerate-images-batch')

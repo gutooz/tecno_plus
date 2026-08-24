@@ -555,7 +555,7 @@ export class TelegramService {
     await this.api.sendMessage(
       chatId,
       [
-        '🤖 <b>Tecno Plus — cadastro por foto</b>',
+        '🤖 <b>zycron — cadastro por foto</b>',
         '',
         'Mande um <b>oi</b> pra escolher o modo de cadastro:',
         '',

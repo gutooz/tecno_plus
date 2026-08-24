@@ -1,4 +1,4 @@
-# Tecno Plus Backend Python
+# zycron Backend Python
 
 Backend FastAPI criado para migracao incremental do NestJS legado em `apps/backend`.
 

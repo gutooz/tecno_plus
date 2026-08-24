@@ -315,17 +315,26 @@ export class ShopeeApiClient {
     shopId: string,
     itemIds: number[],
   ): Promise<ShopeeStoreProduct[]> {
-    const ids = itemIds.slice(0, 50).filter((id) => Number.isFinite(id) && id > 0);
+    const ids = itemIds.filter((id) => Number.isFinite(id) && id > 0);
     if (!ids.length) return [];
 
-    const json = await this.request<{
-      response?: { item_list?: Array<Record<string, unknown>> };
-    }>('/api/v2/product/get_item_base_info', accessToken, shopId, {
-      method: 'GET',
-      query: { item_id_list: ids.join(',') },
-    });
+    const chunks = Array.from({ length: Math.ceil(ids.length / 50) }, (_, index) =>
+      ids.slice(index * 50, index * 50 + 50),
+    );
+    const responses = await Promise.all(
+      chunks.map((chunk) =>
+        this.request<{
+          response?: { item_list?: Array<Record<string, unknown>> };
+        }>('/api/v2/product/get_item_base_info', accessToken, shopId, {
+          method: 'GET',
+          query: { item_id_list: chunk.join(',') },
+        }),
+      ),
+    );
 
-    return (json.response?.item_list ?? []).map((item) => this.normalizeStoreProduct(item));
+    return responses
+      .flatMap((json) => json.response?.item_list ?? [])
+      .map((item) => this.normalizeStoreProduct(item));
   }
 
   /**

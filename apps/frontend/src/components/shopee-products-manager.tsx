@@ -270,7 +270,7 @@ function ShopeeStoreProducts({
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('NORMAL');
+  const [status, setStatus] = useState('all');
   const [editing, setEditing] = useState<ShopeeStoreProduct | null>(null);
   const [deleting, setDeleting] = useState<ShopeeStoreProduct | null>(null);
   const [creating, setCreating] = useState(false);
@@ -422,11 +422,13 @@ function ShopeeStoreProducts({
               }}
               className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-fg outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
             >
+              <option value="all">Todos</option>
               <option value="NORMAL">Publicados</option>
               <option value="UNLIST">Ocultos</option>
               <option value="REVIEWING">Em revisão</option>
               <option value="BANNED">Bloqueados</option>
               <option value="SELLER_DELETE">Excluídos</option>
+              <option value="SHOPEE_DELETE">Removidos pela Shopee</option>
             </select>
           </div>
         </div>

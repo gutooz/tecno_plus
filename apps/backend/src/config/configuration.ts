@@ -128,7 +128,22 @@ export default () => ({
       (process.env.ASAAS_ENVIRONMENT === 'production'
         ? 'https://api.asaas.com/v3'
         : 'https://api-sandbox.asaas.com/v3'),
+    userAgent: process.env.ASAAS_USER_AGENT ?? '',
+    webhookToken: process.env.ASAAS_WEBHOOK_TOKEN ?? '',
     platformFee: parseFloat(process.env.ASAAS_PLATFORM_FEE ?? '3'),
+  },
+
+  mercadoPago: {
+    accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN ?? '',
+    publicKey: process.env.MERCADO_PAGO_PUBLIC_KEY ?? '',
+    clientId: process.env.MERCADO_PAGO_CLIENT_ID ?? '',
+    clientSecret: process.env.MERCADO_PAGO_CLIENT_SECRET ?? '',
+    environment: process.env.MERCADO_PAGO_ENVIRONMENT ?? 'sandbox',
+    baseUrl: process.env.MERCADO_PAGO_API_URL ?? 'https://api.mercadopago.com',
+    webhookUrl:
+      process.env.MERCADO_PAGO_WEBHOOK_URL ??
+      'https://zycron.online/api/dropshipping/mercado-pago/webhook',
+    webhookSecret: process.env.MERCADO_PAGO_WEBHOOK_SECRET ?? '',
   },
 
   security: {

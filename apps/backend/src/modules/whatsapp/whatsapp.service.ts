@@ -329,8 +329,39 @@ export class WhatsAppService {
   }
 
   private looksConnected(value: unknown): boolean {
+    const flags = this.connectionFlags(value);
+    if (flags.some((flag) => flag.connected === false)) return false;
+    if (flags.some((flag) => flag.connected === true)) return true;
+
     const text = JSON.stringify(value ?? '').toLowerCase();
-    return text.includes('connected') || text.includes('islogged') || text.includes('inchat');
+    if (
+      /\b(disconnected|disconnect|not[_\s-]*connected|not[_\s-]*logged|unlogged|unpaired|closed|browserclose|autoclose|failed|timeout|qrcode|qr)\b/.test(
+        text,
+      )
+    ) {
+      return false;
+    }
+    return /\b(connected|inchat|authenticated|islogged|open)\b/.test(text);
+  }
+
+  private connectionFlags(value: unknown): Array<{ connected: boolean }> {
+    if (!value || typeof value !== 'object') return [];
+    const flags: Array<{ connected: boolean }> = [];
+    const visit = (item: unknown) => {
+      if (!item || typeof item !== 'object') return;
+      for (const [rawKey, rawValue] of Object.entries(item as Record<string, unknown>)) {
+        const key = rawKey.toLowerCase();
+        if (
+          typeof rawValue === 'boolean' &&
+          ['connected', 'isconnected', 'islogged', 'logged', 'online'].includes(key)
+        ) {
+          flags.push({ connected: rawValue });
+        }
+        if (rawValue && typeof rawValue === 'object') visit(rawValue);
+      }
+    };
+    visit(value);
+    return flags;
   }
 
   private async safeQrCode(): Promise<unknown> {

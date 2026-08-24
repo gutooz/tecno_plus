@@ -26,13 +26,13 @@ export function SiteHeader() {
           <span className="h-9 w-9 overflow-hidden rounded-2xl shadow-soft ring-1 ring-border/60">
             <Image
               src="/logo.jpg"
-              alt="Tecno Plus"
+              alt="zycron"
               width={36}
               height={36}
               className="h-full w-full object-cover"
             />
           </span>
-          <span className="text-sm font-semibold tracking-tight text-fg">Tecno Plus</span>
+          <span className="text-sm font-semibold tracking-tight text-fg">zycron</span>
         </Link>
 
         <nav className="hidden items-center gap-7 lg:flex">

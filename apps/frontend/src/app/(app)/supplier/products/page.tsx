@@ -365,7 +365,7 @@ function TelegramCard() {
       {linkInfo && !status?.linked && (
         <div className="mt-4 rounded-2xl border border-border bg-surface-2/60 p-4 text-sm">
           <p className="text-muted">
-            1. Abra o bot da Tecno Plus no Telegram
+            1. Abra o bot da zycron no Telegram
             {deepLink && (
               <>
                 {' '}

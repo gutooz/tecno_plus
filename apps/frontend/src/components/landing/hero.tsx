@@ -20,7 +20,7 @@ export function Hero() {
             Venda mais produtos sem precisar manter estoque próprio.
           </h1>
           <p className="mt-5 max-w-lg text-base leading-relaxed text-muted">
-            A Tecno Plus conecta fornecedores e vendedores em uma única plataforma para cadastrar
+            A zycron conecta fornecedores e vendedores em uma única plataforma para cadastrar
             produtos, publicar em marketplaces, receber pedidos e organizar toda a operação de
             dropshipping.
           </p>

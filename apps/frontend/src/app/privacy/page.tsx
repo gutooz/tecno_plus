@@ -4,9 +4,9 @@ export default function PrivacyPage() {
       <div className="mx-auto max-w-3xl">
         <h1 className="text-3xl font-semibold tracking-tight">Política de Privacidade</h1>
         <p className="mt-4 text-sm leading-6 text-muted">
-          A Tecno Plus Dropshipping utiliza dados de conta, loja, produtos, anúncios e pedidos
-          apenas para operar a integração autorizada pelo usuário, incluindo autenticação,
-          publicação, sincronização, atendimento de pedidos e registros de auditoria.
+          A zycron Dropshipping utiliza dados de conta, loja, produtos, anúncios e pedidos apenas
+          para operar a integração autorizada pelo usuário, incluindo autenticação, publicação,
+          sincronização, atendimento de pedidos e registros de auditoria.
         </p>
         <p className="mt-4 text-sm leading-6 text-muted">
           Tokens e credenciais de marketplace são armazenados criptografados no backend e não são

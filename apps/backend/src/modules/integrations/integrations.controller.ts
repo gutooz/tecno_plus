@@ -26,6 +26,15 @@ import { MercadoLivreApiClient } from './mercado-livre-api.client';
 import { MercadoLivreConnectionsService } from './mercado-livre-connections.service';
 import { IntegrationLog, IntegrationLogDocument } from '../database/schemas/dropshipping.schema';
 
+const SHOPEE_PRODUCT_STATUSES = [
+  'NORMAL',
+  'UNLIST',
+  'REVIEWING',
+  'BANNED',
+  'SELLER_DELETE',
+  'SHOPEE_DELETE',
+] as const;
+
 /**
  * Tela/API de "Integrações": status de cada canal de publicação + fluxo OAuth
  * da Shopee e do Mercado Livre (integrações via API real hoje — os demais
@@ -178,29 +187,36 @@ export class IntegrationsController {
     if (!auth) throw new BadRequestException('Nenhuma loja Shopee conectada.');
     const page = Math.max(Number(pageParam) || 1, 1);
     const limit = Math.min(Math.max(Number(limitParam) || 20, 1), 100);
-    const status = this.shopeeProductStatus(statusParam);
-    const result = await this.shopeeClient.getStoreProducts(auth.accessToken, auth.shopId, {
-      offset: (page - 1) * limit,
-      pageSize: limit,
-      status,
-    });
+    const statuses = this.shopeeProductStatuses(statusParam);
+    const result =
+      statuses.length === 1
+        ? await this.shopeeClient.getStoreProducts(auth.accessToken, auth.shopId, {
+            offset: (page - 1) * limit,
+            pageSize: limit,
+            status: statuses[0],
+          })
+        : await this.getStoreProductsByStatuses(auth.accessToken, auth.shopId, statuses);
     const normalizedSearch = search?.trim().toLowerCase();
-    const items = normalizedSearch
+    const filteredItems = normalizedSearch
       ? result.items.filter((item) =>
           [item.itemName, item.sku, item.itemId, item.categoryName]
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(normalizedSearch)),
         )
       : result.items;
+    const total = normalizedSearch ? filteredItems.length : result.total;
+    const items =
+      statuses.length === 1 ? filteredItems : filteredItems.slice((page - 1) * limit, page * limit);
     await this.connections.recordSync(auth.shopId);
     return {
       items,
-      total: normalizedSearch ? items.length : result.total,
+      total,
       page,
       limit,
-      pages: Math.max(Math.ceil((normalizedSearch ? items.length : result.total) / limit), 1),
-      hasNextPage: normalizedSearch ? false : result.hasNextPage,
-      status,
+      pages: Math.max(Math.ceil(total / limit), 1),
+      hasNextPage:
+        statuses.length === 1 && !normalizedSearch ? result.hasNextPage : page * limit < total,
+      status: statuses.length === 1 ? statuses[0] : 'ALL',
     };
   }
 
@@ -414,10 +430,59 @@ export class IntegrationsController {
     return '/integrations';
   }
 
-  private shopeeProductStatus(status?: string | null) {
-    const allowed = ['NORMAL', 'BANNED', 'UNLIST', 'REVIEWING', 'SELLER_DELETE', 'SHOPEE_DELETE'];
-    const normalized = String(status || 'NORMAL').toUpperCase();
-    return allowed.includes(normalized) ? normalized : 'NORMAL';
+  private async getStoreProductsByStatuses(
+    accessToken: string,
+    shopId: string,
+    statuses: string[],
+  ) {
+    const pages = await Promise.all(
+      statuses.map(async (status) => {
+        const items: Awaited<ReturnType<ShopeeApiClient['getStoreProducts']>>['items'] = [];
+        let total = 0;
+        let offset = 0;
+        const pageSize = 100;
+
+        for (let page = 0; page < 50; page++) {
+          const result = await this.shopeeClient.getStoreProducts(accessToken, shopId, {
+            offset,
+            pageSize,
+            status,
+          });
+          items.push(...result.items);
+          total = Math.max(total, result.total);
+          if (!result.hasNextPage) break;
+          offset += pageSize;
+        }
+
+        return { items, total: Math.max(total, items.length) };
+      }),
+    );
+
+    const items = pages
+      .flatMap((page) => page.items)
+      .sort((a, b) => Number(b.updateTime ?? 0) - Number(a.updateTime ?? 0));
+
+    return {
+      items,
+      total: pages.reduce((sum, page) => sum + page.total, 0),
+      hasNextPage: false,
+    };
+  }
+
+  private shopeeProductStatuses(status?: string | null): string[] {
+    const raw = String(status ?? 'all').trim();
+    if (!raw || raw.toLowerCase() === 'all') return [...SHOPEE_PRODUCT_STATUSES];
+
+    const statuses = raw
+      .split(',')
+      .map((item) => item.trim().toUpperCase())
+      .filter(
+        (item, index, all): item is (typeof SHOPEE_PRODUCT_STATUSES)[number] =>
+          SHOPEE_PRODUCT_STATUSES.includes(item as (typeof SHOPEE_PRODUCT_STATUSES)[number]) &&
+          all.indexOf(item) === index,
+      );
+
+    return statuses.length ? statuses : [...SHOPEE_PRODUCT_STATUSES];
   }
 
   private cleanShopeeProductPatch(body: ShopeeStoreProductPatch): ShopeeStoreProductPatch {

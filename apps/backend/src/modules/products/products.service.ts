@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { createHash } from 'crypto';
 import { FilterQuery, Model, Types } from 'mongoose';
-import { ProductStatus, QueueName } from '@tecnoplus/shared';
+import { buildInternalSku, ProductStatus, QueueName, slugify } from '@tecnoplus/shared';
 import { Product, ProductDocument } from '../database/schemas/product.schema';
 import { QueueService } from '../queues/queue.service';
 import { ImageAgent } from '../../agents/image.agent';
 import { WeightAgent } from '../../agents/weight.agent';
 import { exportShopeeWorkbook, ShopeeExportResult, SourceProduct } from './shopee';
+import { StorageService } from '../storage/storage.service';
 
 export interface ListProductsQuery {
   ownerId: string;
@@ -16,6 +18,12 @@ export interface ListProductsQuery {
   limit?: number;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
+}
+
+interface ManualProductFile {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
 }
 
 /** Grava `value` em `obj` seguindo `path`, criando objetos intermediários se faltarem. */
@@ -33,6 +41,58 @@ function productIdValues(id: string): unknown[] {
   return Types.ObjectId.isValid(id) ? [new Types.ObjectId(id), id] : [id];
 }
 
+function text(value: unknown): string {
+  return value == null ? '' : String(value).trim();
+}
+
+function decimal(value: unknown): number | undefined {
+  const compact = text(value).replace(/[^\d,.-]/g, '');
+  const raw = compact.includes(',') ? compact.replace(/\./g, '').replace(',', '.') : compact;
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function money(value: unknown): number | undefined {
+  return decimal(value);
+}
+
+function int(value: unknown): number | undefined {
+  const n = decimal(value);
+  return n == null ? undefined : Math.floor(n);
+}
+
+function parseManualVariations(raw: unknown) {
+  const value = text(raw);
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item, index) => {
+        const row = item as Record<string, unknown>;
+        const option1 = text(row.option1);
+        const option2 = text(row.option2);
+        const price = money(row.price);
+        const stock = int(row.stock);
+        if (!option1 && !option2) return null;
+        return {
+          name1: text(row.name1) || 'Cor',
+          option1,
+          name2: option2 ? text(row.name2) || 'Tamanho' : undefined,
+          option2: option2 || undefined,
+          sku: text(row.sku) || undefined,
+          price,
+          stock,
+          integrationNo: text(row.integrationNo) || `manual-${index + 1}`,
+        };
+      })
+      .filter(Boolean);
+  } catch {
+    throw new BadRequestException('Variações em formato inválido.');
+  }
+}
+
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
@@ -42,6 +102,7 @@ export class ProductsService {
     private readonly queue: QueueService,
     private readonly image: ImageAgent,
     private readonly weight: WeightAgent,
+    private readonly storage: StorageService,
   ) {}
 
   async list(q: ListProductsQuery) {
@@ -76,6 +137,125 @@ export class ProductsService {
     ]);
 
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  async createManualShopeeProduct(
+    ownerId: string,
+    files: ManualProductFile[],
+    body: Record<string, string | undefined>,
+  ) {
+    const images = files.filter(
+      (file) => file.buffer?.length && file.mimetype?.startsWith('image/'),
+    );
+    if (!images.length) throw new BadRequestException('Envie pelo menos uma imagem do produto.');
+
+    const title = text(body.title);
+    const description = text(body.description);
+    const category = text(body.category);
+    const brand = text(body.brand) || 'NoBrand';
+    const shopeeCategoryId = int(body.shopeeCategoryId);
+    const salePrice = money(body.salePrice);
+    const purchasePrice = money(body.purchasePrice) ?? 0;
+    const stock = int(body.stock);
+    const weight = decimal(body.weight);
+    const length = decimal(body.length);
+    const width = decimal(body.width);
+    const height = decimal(body.height);
+    const sku = text(body.sku);
+    const gtin = text(body.gtin);
+    const variations = parseManualVariations(body.variations);
+
+    if (title.length < 2 || title.length > 120) {
+      throw new BadRequestException('Título Shopee deve ter entre 2 e 120 caracteres.');
+    }
+    if (description.length < 10 || description.length > 5000) {
+      throw new BadRequestException('Descrição Shopee deve ter entre 10 e 5000 caracteres.');
+    }
+    if (!shopeeCategoryId || shopeeCategoryId <= 0) {
+      throw new BadRequestException('Informe o ID numérico da categoria Shopee.');
+    }
+    if (!salePrice || salePrice < 1 || salePrice > 100000) {
+      throw new BadRequestException('Preço Shopee deve ficar entre R$ 1 e R$ 100.000.');
+    }
+    if (stock == null || stock < 0) {
+      throw new BadRequestException('Informe o estoque inteiro do produto.');
+    }
+    if (!weight || !length || !width || !height) {
+      throw new BadRequestException('Peso e dimensões da embalagem são obrigatórios.');
+    }
+
+    const seed = `${Date.now()}${Math.round(Math.random() * 1e6)}`;
+    const internalSku = sku || buildInternalSku(category || undefined, seed);
+    const imageHash = createHash('sha256').update(images[0].buffer).digest('hex');
+    const nameKey = slugify(title);
+
+    const created = await this.model.create({
+      ownerId,
+      internalSku,
+      status: ProductStatus.READY,
+      aiConfidence: 1,
+      vision: {
+        name: title,
+        brand,
+        category,
+        shopeeCategoryId,
+        quantity: stock,
+        weight,
+        length,
+        width,
+        height,
+        ...(gtin ? { gtin } : {}),
+      },
+      content: {
+        title,
+        description,
+        longDescription: description,
+        marketplaceDescription: description,
+        category,
+        summary: description.slice(0, 240),
+        bulletPoints: [],
+        seo: {
+          metaDescription: description.slice(0, 155),
+          slug: slugify(title),
+          keywords: [],
+          tags: [],
+        },
+        technicalSpecs: {
+          Marca: brand,
+          Condição: 'Novo',
+          'Categoria Shopee': String(shopeeCategoryId),
+        },
+      },
+      pricing: {
+        purchasePrice,
+        suggestedPrice: salePrice,
+        profit: salePrice - purchasePrice,
+        marginPercent: salePrice > 0 ? ((salePrice - purchasePrice) / salePrice) * 100 : 0,
+        roi: purchasePrice > 0 ? ((salePrice - purchasePrice) / purchasePrice) * 100 : 0,
+      },
+      images: {},
+      variations,
+      nameKey,
+      imageHash,
+      source: 'manual-shopee',
+    });
+
+    const urls: string[] = [];
+    for (const [index, file] of images.slice(0, 9).entries()) {
+      const ext = (file.mimetype.split('/')[1] ?? 'jpg').split('+')[0];
+      const path = `products/${String(created._id)}/manual-${index + 1}.${ext}`;
+      urls.push(await this.storage.upload(path, file.buffer, file.mimetype));
+    }
+
+    created.set('images', {
+      original: urls[0],
+      thumbnail: urls[0],
+      square: urls[0],
+      shopee: urls,
+    });
+    await created.save();
+
+    return created.toObject();
   }
 
   private productByOwnerFilter(ownerId: string, id: string): Record<string, unknown> {
@@ -162,7 +342,7 @@ export class ProductsService {
 
   async startPipeline(ownerId: string, id: string) {
     const doc = await this.findRawById(ownerId, id);
-    if (!doc) throw new NotFoundException('Produto nÃ£o encontrado');
+    if (!doc) throw new NotFoundException('Produto não encontrado');
     await this.model.collection.updateOne(this.productByOwnerFilter(ownerId, id), {
       $set: { status: ProductStatus.PROCESSING },
     });

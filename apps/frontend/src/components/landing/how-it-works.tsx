@@ -19,7 +19,7 @@ const STEPS = [
   {
     number: '03',
     title: 'Produto é publicado',
-    description: 'A Tecno Plus conecta o catálogo do vendedor com o marketplace escolhido.',
+    description: 'A zycron conecta o catálogo do vendedor com o marketplace escolhido.',
   },
   {
     number: '04',

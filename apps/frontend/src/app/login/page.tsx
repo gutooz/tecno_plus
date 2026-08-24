@@ -111,13 +111,13 @@ function LoginForm() {
           <div className="h-9 w-9 overflow-hidden rounded-2xl ring-1 ring-white/15">
             <Image
               src="/logo.jpg"
-              alt="Tecno Plus"
+              alt="zycron"
               width={36}
               height={36}
               className="h-full w-full object-cover"
             />
           </div>
-          <span className="text-sm font-medium text-white/75">Tecno Plus AI Catalog</span>
+          <span className="text-sm font-medium text-white/75">zycron</span>
         </motion.div>
 
         <motion.div
@@ -179,7 +179,7 @@ function LoginForm() {
             <div className="h-12 w-12 overflow-hidden rounded-2xl shadow-soft lg:hidden">
               <Image
                 src="/logo.jpg"
-                alt="Tecno Plus"
+                alt="zycron"
                 width={48}
                 height={48}
                 className="h-full w-full object-cover"

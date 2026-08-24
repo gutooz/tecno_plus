@@ -2,7 +2,7 @@
   "name": "tecnoplus-ai-catalog",
   "version": "0.1.0",
   "private": true,
-  "description": "Plataforma inteligente de cadastro de produtos com IA para a Tecno Plus",
+  "description": "Plataforma inteligente de cadastro de produtos com IA para a zycron",
   "workspaces": [
     "shared",
     "apps/backend",

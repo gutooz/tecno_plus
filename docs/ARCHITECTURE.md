@@ -1,4 +1,4 @@
-# Arquitetura — Tecno Plus AI Catalog
+# Arquitetura — zycron
 
 ## Visão de componentes
 

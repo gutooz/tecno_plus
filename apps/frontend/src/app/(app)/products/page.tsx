@@ -1,14 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   CheckCircle2,
+  Clock,
+  ImagePlus,
   Search,
   Copy,
+  Eye,
+  Layers,
+  Package,
   Trash2,
   Pencil,
   Send,
@@ -18,8 +23,10 @@ import {
   Scale,
   ShoppingBag,
   Sparkles,
+  UploadCloud,
   X,
   XCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, Card, Checkbox, IconButton, Input, Skeleton, StatusPill } from '@/components/ui';
@@ -34,10 +41,23 @@ interface ProductRow {
   vision: { name?: string; brand?: string; category?: string; quantity?: number };
   content?: { category?: string };
   pricing?: { purchasePrice?: number; suggestedPrice?: number; marginPercent?: number };
-  images?: { thumbnail?: string };
+  images?: { thumbnail?: string; original?: string; hd?: string; square?: string; webp?: string };
   publishedChannels?: string[];
   externalIds?: Record<string, string>;
   createdAt?: string;
+}
+
+interface ManualCreatedProduct {
+  _id: string;
+  internalSku: string;
+}
+
+interface ManualVariationDraft {
+  option1: string;
+  option2: string;
+  sku: string;
+  price: string;
+  stock: string;
 }
 
 interface ListResponse {
@@ -47,9 +67,71 @@ interface ListResponse {
   pages: number;
 }
 
+interface ProductsDashboard {
+  products: {
+    processed: number;
+    published: number;
+    waiting: number;
+    reviewing: number;
+    error: number;
+  };
+}
+
+type StatusCardKey = keyof ProductsDashboard['products'];
+
+const STATUS_CARDS: {
+  key: StatusCardKey;
+  status: string;
+  label: string;
+  icon: LucideIcon;
+  tint: string;
+  iconColor: string;
+}[] = [
+  {
+    key: 'processed',
+    status: 'all',
+    label: 'Processados',
+    icon: Package,
+    tint: 'bg-primary/10',
+    iconColor: 'text-primary',
+  },
+  {
+    key: 'published',
+    status: 'published',
+    label: 'Publicados',
+    icon: CheckCircle2,
+    tint: 'bg-success/12',
+    iconColor: 'text-success',
+  },
+  {
+    key: 'waiting',
+    status: 'waiting',
+    label: 'Aguardando',
+    icon: Clock,
+    tint: 'bg-warning/14',
+    iconColor: 'text-warning',
+  },
+  {
+    key: 'reviewing',
+    status: 'needs_review',
+    label: 'Revisando',
+    icon: Eye,
+    tint: 'bg-primary/10',
+    iconColor: 'text-primary',
+  },
+  {
+    key: 'error',
+    status: 'error',
+    label: 'Com erro',
+    icon: AlertTriangle,
+    tint: 'bg-danger/12',
+    iconColor: 'text-danger',
+  },
+];
+
 const STATUS_FILTERS: Record<string, { label: string; description: string }> = {
   all: {
-    label: 'Todos os produtos',
+    label: 'Processados',
     description: 'Inclui enviados, processamento, revisão, prontos, publicados e erros.',
   },
   waiting: {
@@ -93,6 +175,24 @@ const STATUS_FILTERS: Record<string, { label: string; description: string }> = {
  */
 function categoryOf(p: ProductRow): string | undefined {
   return p.content?.category || p.vision?.category;
+}
+
+function isWaitingProduct(p: ProductRow): boolean {
+  return p.status === 'uploaded' || p.status === 'processing';
+}
+
+function productListTitle(p: ProductRow): string {
+  return p.vision?.name || (isWaitingProduct(p) ? 'Aguardando IA' : p.internalSku);
+}
+
+function productListSubtitle(p: ProductRow): string {
+  if (p.vision?.brand) return p.vision.brand;
+  if (isWaitingProduct(p)) return `SKU ${p.internalSku}`;
+  return '—';
+}
+
+function productListImage(p: ProductRow): string | undefined {
+  return productThumbnail(p.images) ?? (isWaitingProduct(p) ? p.images?.original : undefined);
 }
 
 interface ShopeeExportReport {
@@ -199,6 +299,7 @@ export default function ProductsPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [estimatingWeight, setEstimatingWeight] = useState(false);
   const [shopeeNotice, setShopeeNotice] = useState<ShopeePublishNotice | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
 
   useEffect(() => {
     if (!shopeeNotice) return;
@@ -223,6 +324,12 @@ export default function ProductsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, statusFilter, page],
     queryFn: () => api.get<ListResponse>(productsPath({ search, status: statusFilter, page })),
+    refetchInterval: 8000,
+  });
+
+  const { data: dashboard, isLoading: isDashboardLoading } = useQuery({
+    queryKey: ['products-dashboard-summary'],
+    queryFn: () => api.get<ProductsDashboard>('/dashboard'),
     refetchInterval: 8000,
   });
 
@@ -408,13 +515,53 @@ export default function ProductsPage() {
             }}
           />
         </div>
-        <Link href="/lote" className="shrink-0">
-          <Button size="sm" variant="outline">
-            <Plus size={15} />
-            Novo produto
-          </Button>
-        </Link>
+        <Button
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={() => setManualOpen(true)}
+        >
+          <Plus size={15} />
+          Novo produto
+        </Button>
       </PageHeader>
+
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {STATUS_CARDS.map(({ key, status, label, icon: Icon, tint, iconColor }) => {
+          const active = statusFilter === status;
+          return (
+            <Link
+              key={key}
+              href={`/products?status=${status}`}
+              aria-current={active ? 'page' : undefined}
+              aria-label={`Ver produtos ${label.toLowerCase()}`}
+              className="block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+            >
+              <Card
+                interactive
+                className={cn(
+                  'flex min-h-28 flex-col justify-between gap-3 p-4',
+                  active && 'border-primary/55 bg-primary/[0.06] ring-1 ring-primary/25',
+                )}
+              >
+                <span className={`flex h-9 w-9 items-center justify-center rounded-2xl ${tint}`}>
+                  <Icon size={18} className={iconColor} />
+                </span>
+                <div>
+                  {isDashboardLoading ? (
+                    <Skeleton className="h-7 w-12 rounded-lg" />
+                  ) : (
+                    <p className="nums text-2xl font-semibold leading-none">
+                      {dashboard?.products[key] ?? 0}
+                    </p>
+                  )}
+                  <p className="mt-1.5 text-xs font-medium text-muted">{label}</p>
+                </div>
+              </Card>
+            </Link>
+          );
+        })}
+      </div>
 
       {activeFilter && (
         <Card className="mb-3 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -519,24 +666,24 @@ export default function ProductsPage() {
                 className="mt-1"
                 checked={selected.has(p._id)}
                 onChange={() => toggleSelected(p._id)}
-                aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
+                aria-label={`Selecionar ${productListTitle(p)}`}
               />
               <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border/60">
-                {productThumbnail(p.images) && (
+                {productListImage(p) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={productThumbnail(p.images)}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={productListImage(p)} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-faint">
+                    <PackageOpen size={20} />
+                  </div>
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{p.vision?.name ?? p.internalSku}</p>
+                    <p className="truncate font-medium">{productListTitle(p)}</p>
                     <p className="truncate text-xs text-muted">
-                      {categoryOf(p) ?? p.vision?.brand ?? '—'}
+                      {categoryOf(p) ?? productListSubtitle(p)}
                     </p>
                   </div>
                   <StatusPill status={p.status} />
@@ -625,24 +772,28 @@ export default function ProductsPage() {
                       <Checkbox
                         checked={checked}
                         onChange={() => toggleSelected(p._id)}
-                        aria-label={`Selecionar ${p.vision?.name ?? p.internalSku}`}
+                        aria-label={`Selecionar ${productListTitle(p)}`}
                       />
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border/60">
-                          {productThumbnail(p.images) && (
+                          {productListImage(p) ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={productThumbnail(p.images)}
+                              src={productListImage(p)}
                               alt=""
                               className="h-full w-full object-cover"
                             />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-faint">
+                              <PackageOpen size={16} />
+                            </div>
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate font-medium">{p.vision?.name ?? p.internalSku}</p>
-                          <p className="truncate text-xs text-muted">{p.vision?.brand ?? '—'}</p>
+                          <p className="truncate font-medium">{productListTitle(p)}</p>
+                          <p className="truncate text-xs text-muted">{productListSubtitle(p)}</p>
                         </div>
                       </div>
                     </td>
@@ -698,7 +849,7 @@ export default function ProductsPage() {
               })}
               {isEmpty && (
                 <tr>
-                  <td colSpan={9}>
+                  <td colSpan={11}>
                     <EmptyState />
                   </td>
                 </tr>
@@ -735,7 +886,467 @@ export default function ProductsPage() {
       {shopeeNotice && (
         <ShopeePublishDialog notice={shopeeNotice} onClose={() => setShopeeNotice(null)} />
       )}
+
+      {manualOpen && (
+        <ManualShopeeProductDialog
+          onClose={() => setManualOpen(false)}
+          onCreated={() => {
+            setManualOpen(false);
+            qc.invalidateQueries({ queryKey: ['products'] });
+            qc.invalidateQueries({ queryKey: ['products-dashboard-summary'] });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+const EMPTY_MANUAL_FORM = {
+  title: '',
+  description: '',
+  shopeeCategoryId: '',
+  category: '',
+  brand: 'NoBrand',
+  sku: '',
+  gtin: '',
+  purchasePrice: '',
+  salePrice: '',
+  stock: '',
+  weight: '',
+  length: '',
+  width: '',
+  height: '',
+  variationName1: 'Cor',
+  variationName2: 'Tamanho',
+};
+
+const EMPTY_VARIATION: ManualVariationDraft = {
+  option1: '',
+  option2: '',
+  sku: '',
+  price: '',
+  stock: '',
+};
+
+function ManualShopeeProductDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [form, setForm] = useState(EMPTY_MANUAL_FORM);
+  const [variations, setVariations] = useState<ManualVariationDraft[]>([{ ...EMPTY_VARIATION }]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => previews.forEach((url) => URL.revokeObjectURL(url));
+  }, [previews]);
+
+  function setField(field: keyof typeof EMPTY_MANUAL_FORM, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function pickImages(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []).slice(0, 9);
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setFiles(selected);
+    setPreviews(selected.map((file) => URL.createObjectURL(file)));
+  }
+
+  function updateVariation(index: number, field: keyof ManualVariationDraft, value: string) {
+    setVariations((current) =>
+      current.map((variation, i) => (i === index ? { ...variation, [field]: value } : variation)),
+    );
+  }
+
+  function addVariation() {
+    setVariations((current) => [...current, { ...EMPTY_VARIATION }]);
+  }
+
+  function removeVariation(index: number) {
+    setVariations((current) =>
+      current.length === 1 ? [{ ...EMPTY_VARIATION }] : current.filter((_, i) => i !== index),
+    );
+  }
+
+  function validateStep(nextStep: 1 | 2) {
+    setError(null);
+    if (nextStep === 2) {
+      if (!files.length) return setError('Envie pelo menos uma imagem do produto.');
+      if (form.title.trim().length < 2) return setError('Informe o título do anúncio.');
+      if (form.description.trim().length < 10) return setError('Informe uma descrição maior.');
+    }
+    setStep(nextStep);
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    if (!files.length) return setError('Envie pelo menos uma imagem do produto.');
+    if (!form.shopeeCategoryId.trim()) return setError('Informe o ID da categoria Shopee.');
+    if (!form.salePrice.trim()) return setError('Informe o preço de venda.');
+    if (!form.stock.trim()) return setError('Informe o estoque.');
+    if (!form.weight.trim() || !form.length.trim() || !form.width.trim() || !form.height.trim()) {
+      return setError('Preencha peso, comprimento, largura e altura da embalagem.');
+    }
+
+    const cleanVariations = variations
+      .map((variation) => ({
+        name1: form.variationName1,
+        option1: variation.option1.trim(),
+        name2: form.variationName2,
+        option2: variation.option2.trim(),
+        sku: variation.sku.trim(),
+        price: variation.price.trim(),
+        stock: variation.stock.trim(),
+      }))
+      .filter((variation) => variation.option1 || variation.option2);
+
+    setSaving(true);
+    setProgress(0);
+    try {
+      await api.uploadTo<ManualCreatedProduct>('/products/manual', files, setProgress, {
+        ...form,
+        variations: JSON.stringify(cleanVariations),
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-6 backdrop-blur-sm">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-5xl overflow-hidden rounded-3xl border border-border bg-surface shadow-2xl"
+      >
+        <div className="flex items-start gap-4 border-b border-border/70 p-5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <ShoppingBag size={22} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold">Novo produto Shopee</p>
+            <p className="mt-1 text-sm text-muted">
+              Cadastre como no Seller Center: fotos, dados obrigatórios, pacote e variações.
+            </p>
+          </div>
+          <IconButton type="button" aria-label="Fechar cadastro" onClick={onClose}>
+            <X size={18} />
+          </IconButton>
+        </div>
+
+        <div className="border-b border-border/70 px-5 py-3">
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className={stepButtonClass(step === 1)}
+            >
+              <ImagePlus size={15} /> Produto
+            </button>
+            <button
+              type="button"
+              onClick={() => validateStep(2)}
+              className={stepButtonClass(step === 2)}
+            >
+              <Layers size={15} /> Variações
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {error && (
+            <div className="mb-4 flex items-start gap-2 rounded-2xl border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {step === 1 ? (
+            <div className="grid gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
+              <section>
+                <label className="flex min-h-52 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-border-strong bg-surface-2/60 px-5 py-8 text-center transition hover:border-primary/60 hover:bg-primary/[0.04]">
+                  <UploadCloud size={30} className="text-primary" />
+                  <span className="mt-3 text-sm font-semibold">Subir imagens</span>
+                  <span className="mt-1 text-xs text-muted">Capa + até 8 imagens adicionais</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="sr-only"
+                    onChange={pickImages}
+                  />
+                </label>
+
+                {previews.length > 0 && (
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {previews.map((src, index) => (
+                      <div
+                        key={src}
+                        className="relative aspect-square overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-border"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="" className="h-full w-full object-cover" />
+                        {index === 0 && (
+                          <span className="absolute left-1.5 top-1.5 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-medium text-white">
+                            Capa
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="grid gap-3.5 sm:grid-cols-2">
+                <ManualField label="Título do produto" className="sm:col-span-2">
+                  <Input
+                    value={form.title}
+                    onChange={(e) => setField('title', e.target.value)}
+                    maxLength={120}
+                    placeholder="Nome do produto para a Shopee"
+                  />
+                </ManualField>
+                <ManualField label="ID categoria Shopee">
+                  <Input
+                    inputMode="numeric"
+                    value={form.shopeeCategoryId}
+                    onChange={(e) => setField('shopeeCategoryId', e.target.value)}
+                    placeholder="120039"
+                  />
+                </ManualField>
+                <ManualField label="Categoria interna">
+                  <Input
+                    value={form.category}
+                    onChange={(e) => setField('category', e.target.value)}
+                    placeholder="Papelaria > Canetas"
+                  />
+                </ManualField>
+                <ManualField label="Marca">
+                  <Input value={form.brand} onChange={(e) => setField('brand', e.target.value)} />
+                </ManualField>
+                <ManualField label="SKU">
+                  <Input
+                    value={form.sku}
+                    onChange={(e) => setField('sku', e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </ManualField>
+                <ManualField label="Preço de compra">
+                  <Input
+                    inputMode="decimal"
+                    value={form.purchasePrice}
+                    onChange={(e) => setField('purchasePrice', e.target.value)}
+                    placeholder="7,00"
+                  />
+                </ManualField>
+                <ManualField label="Preço Shopee">
+                  <Input
+                    inputMode="decimal"
+                    value={form.salePrice}
+                    onChange={(e) => setField('salePrice', e.target.value)}
+                    placeholder="19,99"
+                  />
+                </ManualField>
+                <ManualField label="Estoque">
+                  <Input
+                    inputMode="numeric"
+                    value={form.stock}
+                    onChange={(e) => setField('stock', e.target.value)}
+                    placeholder="100"
+                  />
+                </ManualField>
+                <ManualField label="GTIN/EAN">
+                  <Input
+                    inputMode="numeric"
+                    value={form.gtin}
+                    onChange={(e) => setField('gtin', e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </ManualField>
+                <ManualField label="Peso com embalagem (kg)">
+                  <Input
+                    inputMode="decimal"
+                    value={form.weight}
+                    onChange={(e) => setField('weight', e.target.value)}
+                    placeholder="0,30"
+                  />
+                </ManualField>
+                <div className="grid grid-cols-3 gap-2">
+                  <ManualField label="Comp.">
+                    <Input
+                      inputMode="decimal"
+                      value={form.length}
+                      onChange={(e) => setField('length', e.target.value)}
+                      placeholder="20"
+                    />
+                  </ManualField>
+                  <ManualField label="Larg.">
+                    <Input
+                      inputMode="decimal"
+                      value={form.width}
+                      onChange={(e) => setField('width', e.target.value)}
+                      placeholder="15"
+                    />
+                  </ManualField>
+                  <ManualField label="Alt.">
+                    <Input
+                      inputMode="decimal"
+                      value={form.height}
+                      onChange={(e) => setField('height', e.target.value)}
+                      placeholder="10"
+                    />
+                  </ManualField>
+                </div>
+                <ManualField label="Descrição do produto" className="sm:col-span-2">
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setField('description', e.target.value)}
+                    rows={5}
+                    maxLength={5000}
+                    placeholder="Descrição comercial completa, materiais, medidas, uso e itens inclusos."
+                    className="w-full resize-y rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-fg outline-none transition-all duration-200 ease-out-soft placeholder:text-faint focus:border-primary focus:ring-4 focus:ring-primary/15"
+                  />
+                </ManualField>
+              </section>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ManualField label="Nome da variação 1">
+                  <Input
+                    value={form.variationName1}
+                    onChange={(e) => setField('variationName1', e.target.value)}
+                    placeholder="Cor"
+                  />
+                </ManualField>
+                <ManualField label="Nome da variação 2">
+                  <Input
+                    value={form.variationName2}
+                    onChange={(e) => setField('variationName2', e.target.value)}
+                    placeholder="Tamanho"
+                  />
+                </ManualField>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-border">
+                <div className="grid grid-cols-[1fr_1fr_1fr_7rem_6rem_2.5rem] gap-2 border-b border-border bg-surface-2 px-3 py-2 text-[11px] uppercase tracking-wider text-faint">
+                  <span>{form.variationName1 || 'Cor'}</span>
+                  <span>{form.variationName2 || 'Tamanho'}</span>
+                  <span>SKU</span>
+                  <span>Preço</span>
+                  <span>Estoque</span>
+                  <span />
+                </div>
+                <div className="divide-y divide-border/70">
+                  {variations.map((variation, index) => (
+                    <div
+                      key={index}
+                      className="grid grid-cols-[1fr_1fr_1fr_7rem_6rem_2.5rem] gap-2 px-3 py-2"
+                    >
+                      <Input
+                        value={variation.option1}
+                        onChange={(e) => updateVariation(index, 'option1', e.target.value)}
+                        placeholder="Preto"
+                      />
+                      <Input
+                        value={variation.option2}
+                        onChange={(e) => updateVariation(index, 'option2', e.target.value)}
+                        placeholder="M"
+                      />
+                      <Input
+                        value={variation.sku}
+                        onChange={(e) => updateVariation(index, 'sku', e.target.value)}
+                        placeholder="SKU"
+                      />
+                      <Input
+                        inputMode="decimal"
+                        value={variation.price}
+                        onChange={(e) => updateVariation(index, 'price', e.target.value)}
+                        placeholder={form.salePrice || '19,99'}
+                      />
+                      <Input
+                        inputMode="numeric"
+                        value={variation.stock}
+                        onChange={(e) => updateVariation(index, 'stock', e.target.value)}
+                        placeholder={form.stock || '10'}
+                      />
+                      <IconButton
+                        type="button"
+                        tone="danger"
+                        aria-label="Remover variação"
+                        onClick={() => removeVariation(index)}
+                      >
+                        <Trash2 size={15} />
+                      </IconButton>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Button type="button" variant="outline" size="sm" onClick={addVariation}>
+                <Plus size={15} /> Adicionar variação
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-muted">
+            {saving ? `Enviando imagens... ${progress}%` : 'Condição padrão: produto novo.'}
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            {step === 1 ? (
+              <Button type="button" onClick={() => validateStep(2)}>
+                Próximo
+              </Button>
+            ) : (
+              <Button type="submit" loading={saving}>
+                <CheckCircle2 size={15} /> Salvar produto
+              </Button>
+            )}
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ManualField({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className={`block text-sm ${className ?? ''}`}>
+      <span className="mb-1.5 block text-xs font-medium text-muted">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function stepButtonClass(active: boolean) {
+  return cn(
+    'inline-flex h-10 items-center justify-center gap-2 rounded-xl border text-sm font-medium transition',
+    active
+      ? 'border-primary/55 bg-primary/10 text-primary'
+      : 'border-border bg-surface-2 text-muted',
   );
 }
 
