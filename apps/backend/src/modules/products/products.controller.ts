@@ -19,6 +19,8 @@ import { ProductsService } from './products.service';
 import { encodeReportHeader } from './shopee';
 import { PublishService } from '../publish/publish.service';
 
+type ProductStatusFilter = ProductStatus | 'all' | 'waiting';
+
 @ApiTags('products')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -33,7 +35,7 @@ export class ProductsController {
   list(
     @CurrentUser() user: AuthUser,
     @Query('search') search?: string,
-    @Query('status') status?: ProductStatus,
+    @Query('status') status?: ProductStatusFilter,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,

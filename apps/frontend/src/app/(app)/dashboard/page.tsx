@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -32,44 +33,55 @@ interface Dashboard {
 
 type CardKey = keyof Dashboard['products'];
 
-const CARDS: { key: CardKey; label: string; icon: LucideIcon; tint: string; iconColor: string }[] =
-  [
-    {
-      key: 'processed',
-      label: 'Processados',
-      icon: Package,
-      tint: 'bg-primary/10',
-      iconColor: 'text-primary',
-    },
-    {
-      key: 'published',
-      label: 'Publicados',
-      icon: CheckCircle2,
-      tint: 'bg-success/12',
-      iconColor: 'text-success',
-    },
-    {
-      key: 'waiting',
-      label: 'Aguardando',
-      icon: Clock,
-      tint: 'bg-warning/14',
-      iconColor: 'text-warning',
-    },
-    {
-      key: 'reviewing',
-      label: 'Revisando',
-      icon: Eye,
-      tint: 'bg-primary/10',
-      iconColor: 'text-primary',
-    },
-    {
-      key: 'error',
-      label: 'Com erro',
-      icon: AlertTriangle,
-      tint: 'bg-danger/12',
-      iconColor: 'text-danger',
-    },
-  ];
+const CARDS: {
+  key: CardKey;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  tint: string;
+  iconColor: string;
+}[] = [
+  {
+    key: 'processed',
+    label: 'Processados',
+    href: '/products?status=all',
+    icon: Package,
+    tint: 'bg-primary/10',
+    iconColor: 'text-primary',
+  },
+  {
+    key: 'published',
+    label: 'Publicados',
+    href: '/products?status=published',
+    icon: CheckCircle2,
+    tint: 'bg-success/12',
+    iconColor: 'text-success',
+  },
+  {
+    key: 'waiting',
+    label: 'Aguardando',
+    href: '/products?status=waiting',
+    icon: Clock,
+    tint: 'bg-warning/14',
+    iconColor: 'text-warning',
+  },
+  {
+    key: 'reviewing',
+    label: 'Revisando',
+    href: '/products?status=needs_review',
+    icon: Eye,
+    tint: 'bg-primary/10',
+    iconColor: 'text-primary',
+  },
+  {
+    key: 'error',
+    label: 'Com erro',
+    href: '/products?status=error',
+    icon: AlertTriangle,
+    tint: 'bg-danger/12',
+    iconColor: 'text-danger',
+  },
+];
 
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
@@ -88,23 +100,29 @@ export default function DashboardPage() {
         animate="show"
         className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5"
       >
-        {CARDS.map(({ key, label, icon: Icon, tint, iconColor }) => (
+        {CARDS.map(({ key, label, href, icon: Icon, tint, iconColor }) => (
           <motion.div key={key} variants={staggerItem}>
-            <Card interactive className="flex flex-col gap-3.5">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${tint}`}>
-                <Icon size={19} className={iconColor} />
-              </span>
-              <div>
-                {isLoading ? (
-                  <Skeleton className="h-8 w-12 rounded-lg" />
-                ) : (
-                  <p className="nums text-[28px] font-semibold leading-none tracking-tight">
-                    {data?.products[key] ?? 0}
-                  </p>
-                )}
-                <p className="mt-1.5 text-xs font-medium text-muted">{label}</p>
-              </div>
-            </Card>
+            <Link
+              href={href}
+              aria-label={`Abrir produtos: ${label.toLowerCase()}`}
+              className="block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+            >
+              <Card interactive className="flex min-h-32 flex-col gap-3.5">
+                <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${tint}`}>
+                  <Icon size={19} className={iconColor} />
+                </span>
+                <div>
+                  {isLoading ? (
+                    <Skeleton className="h-8 w-12 rounded-lg" />
+                  ) : (
+                    <p className="nums text-[28px] font-semibold leading-none tracking-tight">
+                      {data?.products[key] ?? 0}
+                    </p>
+                  )}
+                  <p className="mt-1.5 text-xs font-medium text-muted">{label}</p>
+                </div>
+              </Card>
+            </Link>
           </motion.div>
         ))}
       </motion.div>
@@ -115,6 +133,7 @@ export default function DashboardPage() {
           label="IA em execução"
           value={`${data?.aiRunning ?? 0} jobs`}
           loading={isLoading}
+          href="/products?status=processing"
         />
         <InfoTile
           icon={Timer}
@@ -137,9 +156,11 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {(data?.queues ?? []).map((q) => (
-              <div
+              <Link
                 key={q.queue}
-                className="rounded-2xl border border-border/70 bg-surface-2/60 p-3.5"
+                href={queueHref(q.queue)}
+                aria-label={`Abrir produtos da fila ${q.queue}`}
+                className="rounded-2xl border border-border/70 bg-surface-2/60 p-3.5 transition-all duration-200 ease-out-soft hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
               >
                 <p className="text-[11px] font-medium uppercase tracking-wider text-faint">
                   {q.queue}
@@ -151,7 +172,7 @@ export default function DashboardPage() {
                   <span className="text-muted"> espera</span>
                   {q.failed ? <span className="text-danger"> · {q.failed} falha</span> : null}
                 </p>
-              </div>
+              </Link>
             ))}
           </div>
         )}
@@ -165,14 +186,16 @@ function InfoTile({
   label,
   value,
   loading,
+  href,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
   loading: boolean;
+  href?: string;
 }) {
-  return (
-    <Card className="flex items-center gap-4">
+  const content = (
+    <Card interactive={Boolean(href)} className="flex items-center gap-4">
       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
         <Icon size={21} />
       </div>
@@ -186,4 +209,23 @@ function InfoTile({
       </div>
     </Card>
   );
+
+  if (!href) return content;
+
+  return (
+    <Link
+      href={href}
+      aria-label={`Abrir detalhes: ${label.toLowerCase()}`}
+      className="block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+    >
+      {content}
+    </Link>
+  );
+}
+
+function queueHref(queue: string): string {
+  const normalized = queue.toLowerCase();
+  if (normalized === 'upload') return '/products?status=uploaded';
+  if (normalized === 'dead-letter' || normalized === 'retry') return '/products?status=error';
+  return '/products?status=processing';
 }

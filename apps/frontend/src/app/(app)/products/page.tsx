@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -45,6 +46,45 @@ interface ListResponse {
   page: number;
   pages: number;
 }
+
+const STATUS_FILTERS: Record<string, { label: string; description: string }> = {
+  all: {
+    label: 'Todos os produtos',
+    description: 'Inclui enviados, processamento, revisão, prontos, publicados e erros.',
+  },
+  waiting: {
+    label: 'Aguardando',
+    description: 'Produtos enviados ou ainda em processamento pela IA.',
+  },
+  uploaded: {
+    label: 'Enviados',
+    description: 'Fotos recebidas que ainda aguardam processamento.',
+  },
+  processing: {
+    label: 'Processando',
+    description: 'Produtos com alguma etapa da IA em andamento.',
+  },
+  needs_review: {
+    label: 'Revisando',
+    description: 'Produtos que precisam de conferência antes de publicar.',
+  },
+  ready: {
+    label: 'Prontos',
+    description: 'Produtos enriquecidos e prontos para publicação.',
+  },
+  published: {
+    label: 'Publicados',
+    description: 'Produtos já publicados em algum canal.',
+  },
+  error: {
+    label: 'Com erro',
+    description: 'Produtos que falharam em alguma etapa do processamento.',
+  },
+  draft: {
+    label: 'Rascunhos',
+    description: 'Produtos duplicados ou salvos como rascunho.',
+  },
+};
 
 /**
  * A categoria "boa" (curada pelo agente de conteúdo) vive em `content.category`;
@@ -129,8 +169,28 @@ function saveBlob(blob: Blob, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function productsPath({
+  search,
+  status,
+  page,
+}: {
+  search: string;
+  status: string;
+  page: number;
+}): string {
+  const params = new URLSearchParams();
+  if (search.trim()) params.set('search', search.trim());
+  if (status) params.set('status', status);
+  params.set('page', String(page));
+  params.set('limit', '20');
+  return `/products?${params.toString()}`;
+}
+
 export default function ProductsPage() {
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
+  const statusFilter = searchParams.get('status') ?? '';
+  const activeFilter = statusFilter ? STATUS_FILTERS[statusFilter] : null;
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -156,10 +216,13 @@ export default function ProductsPage() {
     };
   }, [shopeeNotice]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['products', search, page],
-    queryFn: () =>
-      api.get<ListResponse>(`/products?search=${encodeURIComponent(search)}&page=${page}&limit=20`),
+    queryKey: ['products', search, statusFilter, page],
+    queryFn: () => api.get<ListResponse>(productsPath({ search, status: statusFilter, page })),
     refetchInterval: 8000,
   });
 
@@ -328,7 +391,9 @@ export default function ProductsPage() {
         subtitle={
           selected.size > 0
             ? `${selected.size} selecionado(s)`
-            : `${data?.total ?? 0} itens no catálogo`
+            : activeFilter
+              ? `${data?.total ?? 0} item(ns) em ${activeFilter.label.toLowerCase()}`
+              : `${data?.total ?? 0} itens no catálogo`
         }
       >
         <div className="relative w-full max-w-xs sm:w-64">
@@ -350,6 +415,21 @@ export default function ProductsPage() {
           </Button>
         </Link>
       </PageHeader>
+
+      {activeFilter && (
+        <Card className="mb-3 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold">{activeFilter.label}</p>
+            <p className="mt-0.5 text-sm text-muted">{activeFilter.description}</p>
+          </div>
+          <Link href="/products" className="shrink-0">
+            <Button variant="outline" size="sm">
+              <X size={15} />
+              Limpar filtro
+            </Button>
+          </Link>
+        </Card>
+      )}
 
       <Card className="mb-3 flex flex-wrap items-center gap-3 p-4">
         <Checkbox checked={allChecked} onChange={toggleSelectAll} aria-label="Selecionar todos" />

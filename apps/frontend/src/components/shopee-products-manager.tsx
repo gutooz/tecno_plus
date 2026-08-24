@@ -347,7 +347,7 @@ function ShopeeStoreProducts({
   });
 
   const items = query.data?.items ?? [];
-  const isEmpty = connected && !query.isLoading && !items.length;
+  const isEmpty = connected && !query.isLoading && !query.isError && !items.length;
 
   function openEditor(item: ShopeeStoreProduct) {
     setEditing(item);
@@ -450,6 +450,14 @@ function ShopeeStoreProducts({
               onDelete={() => setDeleting(item)}
             />
           ))}
+
+          {query.isError && (
+            <ShopeeProductsError
+              error={query.error}
+              isFetching={query.isFetching}
+              onRetry={() => query.refetch()}
+            />
+          )}
 
           {isEmpty && <ShopeeProductsEmpty />}
         </div>
@@ -880,6 +888,31 @@ function ShopeeProductsEmpty() {
       <p className="mt-1 max-w-md text-sm text-muted">
         Troque o filtro de status ou atualize para consultar a loja novamente.
       </p>
+    </div>
+  );
+}
+
+function ShopeeProductsError({
+  error,
+  isFetching,
+  onRetry,
+}: {
+  error: unknown;
+  isFetching: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex min-h-40 flex-col items-center justify-center px-5 py-8 text-center">
+      <AlertCircle size={32} className="text-danger" />
+      <p className="mt-3 font-semibold">Não foi possível consultar a Shopee</p>
+      <p className="mt-1 max-w-xl text-sm text-muted">
+        {error instanceof Error
+          ? error.message
+          : 'A conexão da loja precisa ser revisada antes de listar os produtos.'}
+      </p>
+      <Button size="sm" variant="outline" className="mt-4" loading={isFetching} onClick={onRetry}>
+        <RefreshCw size={15} /> Tentar novamente
+      </Button>
     </div>
   );
 }

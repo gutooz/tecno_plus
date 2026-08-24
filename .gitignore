@@ -8,6 +8,8 @@ node_modules/
 dist/
 build/
 .next/
+.next-dev/
+.next-build/
 out/
 *.tsbuildinfo
 *.egg-info/

@@ -4,7 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
-import { ArrowLeft, Send, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Send, X, AlertTriangle, CheckCircle2, CircleAlert } from 'lucide-react';
 import { ApiError, api } from '@/lib/api';
 import { Button, Card, Input, Skeleton, StatusPill } from '@/components/ui';
 import { formatBRL, formatPercent, productGallery } from '@/lib/utils';
@@ -19,14 +19,21 @@ interface ProductDetail {
     name?: string;
     brand?: string;
     category?: string;
+    shopeeCategoryId?: number | string;
+    shopeeCategoryPath?: string;
+    labelPrice?: number;
     weight?: number;
     quantity?: number;
+    length?: number;
+    width?: number;
+    height?: number;
   };
   market?: { averagePrice?: number; minPrice?: number; maxPrice?: number; competition?: string };
   content?: {
     title?: string;
     description?: string;
     longDescription?: string;
+    marketplaceDescription?: string;
     category?: string;
     seo?: { slug?: string; metaDescription?: string; keywords?: string[] };
     technicalSpecs?: Record<string, string>;
@@ -50,10 +57,15 @@ interface EditableFields {
   title: string;
   description: string;
   category: string;
+  brand: string;
+  shopeeCategoryId: string;
   purchasePrice: string;
   salePrice: string;
   weight: string;
   stock: string;
+  length: string;
+  width: string;
+  height: string;
 }
 
 interface ChatMessage {
@@ -106,10 +118,15 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     title: p?.content?.title ?? p?.vision?.name ?? '',
     description: p?.content?.longDescription ?? p?.content?.description ?? '',
     category: p?.content?.category ?? p?.vision?.category ?? '',
+    brand: p?.vision?.brand ?? '',
+    shopeeCategoryId: p?.vision?.shopeeCategoryId != null ? String(p.vision.shopeeCategoryId) : '',
     purchasePrice: p?.pricing?.purchasePrice != null ? String(p.pricing.purchasePrice) : '',
     salePrice: p?.pricing?.suggestedPrice != null ? String(p.pricing.suggestedPrice) : '',
     weight: p?.vision?.weight != null ? String(p.vision.weight) : '',
     stock: p?.vision?.quantity != null ? String(p.vision.quantity) : '',
+    length: p?.vision?.length != null ? String(p.vision.length) : '',
+    width: p?.vision?.width != null ? String(p.vision.width) : '',
+    height: p?.vision?.height != null ? String(p.vision.height) : '',
   };
 
   function updateField(field: keyof EditableFields, value: string) {
@@ -123,11 +140,21 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       const salePrice = Number(fields.salePrice.replace(',', '.'));
       const weight = Number(fields.weight.replace(',', '.'));
       const stock = Number(fields.stock.replace(',', '.'));
+      const shopeeCategoryId = Number(fields.shopeeCategoryId.replace(',', '.'));
+      const length = Number(fields.length.replace(',', '.'));
+      const width = Number(fields.width.replace(',', '.'));
+      const height = Number(fields.height.replace(',', '.'));
       await api.put(`/products/${id}`, {
         'vision.name': fields.title,
+        'vision.brand': fields.brand.trim() || undefined,
+        'vision.shopeeCategoryId':
+          Number.isFinite(shopeeCategoryId) && shopeeCategoryId > 0
+            ? Math.floor(shopeeCategoryId)
+            : undefined,
         'content.title': fields.title,
         'content.description': fields.description,
         'content.longDescription': fields.description,
+        'content.marketplaceDescription': fields.description,
         'content.category': fields.category,
         // Peso é obrigatório pela Shopee (frete) — só grava se um número > 0 foi
         // digitado; nunca inventamos um valor (chave omitida = undefined no JSON).
@@ -135,6 +162,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         // Estoque também é obrigatório na Shopee — mesma regra: só grava o que
         // foi digitado, nunca inventa (0 é um valor válido, então aceitamos).
         'vision.quantity': Number.isFinite(stock) && stock >= 0 ? Math.floor(stock) : undefined,
+        'vision.length': Number.isFinite(length) && length > 0 ? length : undefined,
+        'vision.width': Number.isFinite(width) && width > 0 ? width : undefined,
+        'vision.height': Number.isFinite(height) && height > 0 ? height : undefined,
         'pricing.purchasePrice': Number.isFinite(purchasePrice) ? purchasePrice : 0,
         'pricing.suggestedPrice': Number.isFinite(salePrice) ? salePrice : 0,
         'pricing.profit':
@@ -221,6 +251,15 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const gallery = productGallery(p.images);
 
   const confidence = Math.round((p.aiConfidence ?? 0) * 100);
+  const shopeeRequirements = buildShopeeRequirements(fields, gallery.length);
+  const shopeeReady = shopeeRequirements.every((item) => item.ok);
+  const hasUnsavedChanges = edit !== null;
+  const publishDisabled = !shopeeReady || hasUnsavedChanges;
+  const publishTitle = hasUnsavedChanges
+    ? 'Salve as alterações antes de publicar'
+    : !shopeeReady
+      ? 'Complete o cadastro Shopee antes de publicar'
+      : undefined;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -237,7 +276,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         </Link>
         <div className="flex items-center gap-3">
           <StatusPill status={p.status} />
-          <Button size="sm" loading={publishing} onClick={publish}>
+          <Button
+            size="sm"
+            loading={publishing}
+            disabled={publishDisabled}
+            title={publishTitle}
+            onClick={publish}
+          >
             {!publishing && <Send size={15} />}
             {publishing ? 'Publicando…' : 'Publicar'}
           </Button>
@@ -322,6 +367,103 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
         <div className="space-y-4">
           <Card>
+            <div className="mb-3.5 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Cadastro Shopee</p>
+                <p className="mt-1 text-xs text-muted">
+                  Campos exigidos para criar o anúncio sem preencher dados falsos.
+                </p>
+              </div>
+              <span
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                  shopeeReady ? 'bg-success/14 text-success' : 'bg-warning/15 text-warning'
+                }`}
+              >
+                {shopeeReady ? <CheckCircle2 size={13} /> : <CircleAlert size={13} />}
+                {shopeeReady ? 'Pronto' : 'Pendente'}
+              </span>
+            </div>
+
+            <div className="mb-4 grid gap-2 sm:grid-cols-2">
+              {shopeeRequirements.map((item) => (
+                <RequirementRow key={item.label} {...item} />
+              ))}
+            </div>
+
+            {hasUnsavedChanges && (
+              <div className="mb-4 rounded-2xl border border-warning/25 bg-warning/[0.08] px-3 py-2 text-xs text-warning">
+                Alterações feitas. Salve antes de publicar na Shopee.
+              </div>
+            )}
+
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Field label="ID categoria Shopee">
+                <Input
+                  inputMode="numeric"
+                  value={fields.shopeeCategoryId}
+                  onChange={(e) => updateField('shopeeCategoryId', e.target.value)}
+                  placeholder="120039"
+                />
+              </Field>
+              <Field label="Marca">
+                <Input
+                  value={fields.brand}
+                  onChange={(e) => updateField('brand', e.target.value)}
+                  placeholder="NoBrand"
+                />
+              </Field>
+              <Field label="Preço Shopee">
+                <Input
+                  inputMode="decimal"
+                  value={fields.salePrice}
+                  onChange={(e) => updateField('salePrice', e.target.value)}
+                  placeholder="39,90"
+                />
+              </Field>
+              <Field label="Estoque">
+                <Input
+                  inputMode="numeric"
+                  value={fields.stock}
+                  onChange={(e) => updateField('stock', e.target.value)}
+                  placeholder="10"
+                />
+              </Field>
+              <Field label="Peso com embalagem (kg)">
+                <Input
+                  inputMode="decimal"
+                  value={fields.weight}
+                  onChange={(e) => updateField('weight', e.target.value)}
+                  placeholder="0,30"
+                />
+              </Field>
+              <Field label="Comprimento (cm)">
+                <Input
+                  inputMode="decimal"
+                  value={fields.length}
+                  onChange={(e) => updateField('length', e.target.value)}
+                  placeholder="20"
+                />
+              </Field>
+              <Field label="Largura (cm)">
+                <Input
+                  inputMode="decimal"
+                  value={fields.width}
+                  onChange={(e) => updateField('width', e.target.value)}
+                  placeholder="15"
+                />
+              </Field>
+              <Field label="Altura (cm)">
+                <Input
+                  inputMode="decimal"
+                  value={fields.height}
+                  onChange={(e) => updateField('height', e.target.value)}
+                  placeholder="10"
+                />
+              </Field>
+            </div>
+          </Card>
+
+          <Card>
             <p className="mb-3.5 text-sm font-semibold">Dados do produto (editável)</p>
             <div className="grid gap-3.5 sm:grid-cols-2">
               <Field label="Título" className="sm:col-span-2">
@@ -336,36 +478,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                   onChange={(e) => updateField('category', e.target.value)}
                 />
               </Field>
-              <Field label="Peso (kg)">
-                <Input
-                  inputMode="decimal"
-                  value={fields.weight}
-                  onChange={(e) => updateField('weight', e.target.value)}
-                  placeholder="0,30"
-                />
-              </Field>
-              <Field label="Estoque">
-                <Input
-                  inputMode="numeric"
-                  value={fields.stock}
-                  onChange={(e) => updateField('stock', e.target.value)}
-                  placeholder="10"
-                />
-              </Field>
-              <Field label="Preço de compra">
+              <Field label="Preço de compra" className="sm:col-span-2">
                 <Input
                   inputMode="decimal"
                   value={fields.purchasePrice}
                   onChange={(e) => updateField('purchasePrice', e.target.value)}
                   placeholder="18,50"
-                />
-              </Field>
-              <Field label="Preço de venda">
-                <Input
-                  inputMode="decimal"
-                  value={fields.salePrice}
-                  onChange={(e) => updateField('salePrice', e.target.value)}
-                  placeholder="39,90"
                 />
               </Field>
               <Field label="Descrição" className="sm:col-span-2">
@@ -523,6 +641,95 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="nums mt-0.5 text-sm font-semibold">{value}</p>
     </div>
   );
+}
+
+interface RequirementItem {
+  label: string;
+  detail: string;
+  ok: boolean;
+}
+
+function RequirementRow({ label, detail, ok }: RequirementItem) {
+  return (
+    <div
+      className={`flex min-h-16 items-start gap-2 rounded-2xl border px-3 py-2.5 ${
+        ok
+          ? 'border-success/20 bg-success/[0.06] text-success'
+          : 'border-border bg-surface-2 text-muted'
+      }`}
+    >
+      {ok ? (
+        <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+      ) : (
+        <CircleAlert size={16} className="mt-0.5 shrink-0 text-warning" />
+      )}
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-fg">{label}</p>
+        <p className="mt-0.5 text-xs leading-relaxed">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function buildShopeeRequirements(fields: EditableFields, imageCount: number): RequirementItem[] {
+  const title = fields.title.trim();
+  const description = fields.description.trim();
+  const categoryId = parseNumber(fields.shopeeCategoryId);
+  const price = parseNumber(fields.salePrice);
+  const stock = parseNumber(fields.stock);
+  const weight = parseNumber(fields.weight);
+  const length = parseNumber(fields.length);
+  const width = parseNumber(fields.width);
+  const height = parseNumber(fields.height);
+
+  return [
+    {
+      label: 'Título',
+      detail: `${title.length}/120 caracteres`,
+      ok: title.length >= 2 && title.length <= 120,
+    },
+    {
+      label: 'Descrição',
+      detail: `${description.length}/5000 caracteres`,
+      ok: description.length >= 10 && description.length <= 5000,
+    },
+    {
+      label: 'Categoria Shopee',
+      detail: Number.isFinite(categoryId) ? `ID ${Math.floor(categoryId)}` : 'ID numérico',
+      ok: Number.isInteger(categoryId) && categoryId > 0,
+    },
+    {
+      label: 'Preço',
+      detail: 'Entre R$ 1 e R$ 100.000',
+      ok: price >= 1 && price <= 100000,
+    },
+    {
+      label: 'Estoque',
+      detail: 'Número inteiro a partir de 0',
+      ok: Number.isInteger(stock) && stock >= 0 && stock <= 10000000,
+    },
+    {
+      label: 'Peso',
+      detail: 'Peso com embalagem maior que 0 kg',
+      ok: weight > 0 && weight <= 100000,
+    },
+    {
+      label: 'Dimensões',
+      detail: 'Comprimento, largura e altura em cm',
+      ok: length > 0 && width > 0 && height > 0,
+    },
+    {
+      label: 'Imagens',
+      detail: `${imageCount}/9 imagens prontas`,
+      ok: imageCount > 0 && imageCount <= 9,
+    },
+  ];
+}
+
+function parseNumber(value: string) {
+  const normalized = value.trim().replace(',', '.');
+  if (!normalized) return Number.NaN;
+  return Number(normalized);
 }
 
 function ProductDetailError({

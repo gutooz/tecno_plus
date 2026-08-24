@@ -11,7 +11,7 @@ import { exportShopeeWorkbook, ShopeeExportResult, SourceProduct } from './shope
 export interface ListProductsQuery {
   ownerId: string;
   search?: string;
-  status?: ProductStatus;
+  status?: ProductStatus | 'all' | 'waiting';
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -48,7 +48,11 @@ export class ProductsService {
     const page = Math.max(1, q.page ?? 1);
     const limit = Math.min(100, Math.max(1, q.limit ?? 20));
     const filter: FilterQuery<ProductDocument> = { ownerId: q.ownerId };
-    if (q.status) {
+    if (q.status === 'all') {
+      // Sem filtro: usado pelo card "Processados" do dashboard, que conta todos os status.
+    } else if (q.status === 'waiting') {
+      filter.status = { $in: [ProductStatus.UPLOADED, ProductStatus.PROCESSING] };
+    } else if (q.status) {
       filter.status = q.status;
     } else {
       // Rascunhos (foto enviada, aguardando título/preço no Envio em Lote) só

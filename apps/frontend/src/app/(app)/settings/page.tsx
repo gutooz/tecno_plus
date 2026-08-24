@@ -16,6 +16,7 @@ import {
 import { api, getSessionUser } from '@/lib/api';
 import { Button, Card, Input, Skeleton } from '@/components/ui';
 import { PageHeader } from '@/components/page-header';
+import { AdminSettingsPanel } from '@/components/admin-settings-panel';
 import { cn } from '@/lib/utils';
 
 const PROVIDERS = [
@@ -182,6 +183,8 @@ export default function SettingsPage() {
         title="Configurações"
         subtitle="Cadastro do fornecedor, preferências e regras de precificação"
       />
+
+      {role === 'admin' && <AdminSettingsPanel />}
 
       {role === 'supplier' && (
         <SupplierActivationSettings

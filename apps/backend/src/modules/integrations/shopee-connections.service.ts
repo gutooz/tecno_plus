@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { randomBytes } from 'crypto';
@@ -13,6 +13,9 @@ import {
   ShopeeOauthStateDocument,
 } from '../database/schemas/shopee-oauth-state.schema';
 import { decryptToken, encryptToken } from './token-crypto.util';
+
+const INVALID_SHOPEE_TOKEN_MESSAGE =
+  'A conexão Shopee salva não pode mais ser aberta. Desconecte e conecte a Shopee novamente.';
 
 /**
  * CRUD da loja Shopee conectada por usuário + renovação automática do
@@ -113,17 +116,22 @@ export class ShopeeConnectionsService {
     if (!conn) return null;
     if (conn.status !== 'connected' || !conn.accessToken || !conn.refreshToken) return null;
 
-    const nearExpiry = conn.expiresAt.getTime() - Date.now() < 5 * 60 * 1000;
-    if (!nearExpiry) {
-      return {
-        accessToken: decryptToken(conn.accessToken, this.encryptionKey),
-        shopId: conn.shopId,
-      };
-    }
+    try {
+      const nearExpiry = conn.expiresAt.getTime() - Date.now() < 5 * 60 * 1000;
+      if (!nearExpiry) {
+        return {
+          accessToken: decryptToken(conn.accessToken, this.encryptionKey),
+          shopId: conn.shopId,
+        };
+      }
 
-    const refreshToken = decryptToken(conn.refreshToken, this.encryptionKey);
-    const refreshed = await this.client.refreshAccessToken(refreshToken, conn.shopId);
-    await this.saveTokens(ownerId, refreshed);
-    return { accessToken: refreshed.accessToken, shopId: refreshed.shopId };
+      const refreshToken = decryptToken(conn.refreshToken, this.encryptionKey);
+      const refreshed = await this.client.refreshAccessToken(refreshToken, conn.shopId);
+      await this.saveTokens(ownerId, refreshed);
+      return { accessToken: refreshed.accessToken, shopId: refreshed.shopId };
+    } catch {
+      await this.recordError(conn.shopId, INVALID_SHOPEE_TOKEN_MESSAGE);
+      throw new BadRequestException(INVALID_SHOPEE_TOKEN_MESSAGE);
+    }
   }
 }

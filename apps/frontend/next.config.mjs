@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === 'development' ? '.next-dev' : '.next'),
   // permite consumir os tipos do pacote compartilhado direto do TS
   transpilePackages: ['@tecnoplus/shared'],
   images: {
