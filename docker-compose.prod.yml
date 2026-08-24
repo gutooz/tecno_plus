@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      SECRET_KEY: ${WPPCONNECT_SECRET_KEY:?WPPCONNECT_SECRET_KEY deve ser configurado}
+      SECRET_KEY: ${WPPCONNECT_SECRET_KEY:-}
       PORT: 21465
       WEBHOOK_URL: ${WPPCONNECT_WEBHOOK_URL:-}
       START_ALL_SESSIONS: 'true'
@@ -59,6 +59,7 @@ services:
       MONGODB_DATABASE: ${MONGODB_DATABASE:-tecnoplus}
       CORS_ORIGIN: ${CORS_ORIGIN}
       SHOPEE_REDIRECT_URL: ${SHOPEE_REDIRECT_URL}
+      WPPCONNECT_BASE_URL: ${WPPCONNECT_BASE_URL:-http://wppconnect:21465}
     volumes:
       - ./apps/backend/local-templates:/app/apps/backend/local-templates:ro
     expose:
