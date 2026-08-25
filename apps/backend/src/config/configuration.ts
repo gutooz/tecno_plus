@@ -95,7 +95,7 @@ export default () => ({
       process.env.FACEBOOK_MARKETING_API_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '',
   },
 
-  // Postagem automática diária (Facebook/Instagram) com aprovação via Telegram.
+  // Postagem automática diária no Facebook com aprovação via Telegram.
   social: {
     // Hora local (0-23) em que o rascunho diário é mandado pra aprovação.
     postHour: parseInt(process.env.SOCIAL_POST_HOUR ?? '9', 10),

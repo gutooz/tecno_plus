@@ -5,7 +5,7 @@ import { SocialApprovalService } from './social.service';
 import { SocialScheduler } from './social.scheduler';
 import { SocialController } from './social.controller';
 
-/** Divulgação diária Facebook/Instagram com aprovação via Telegram (ver `TelegramModule`). */
+/** Divulgação diária no Facebook com aprovação via Telegram (ver `TelegramModule`). */
 @Module({
   imports: [AgentsModule, CampaignsModule],
   controllers: [SocialController],

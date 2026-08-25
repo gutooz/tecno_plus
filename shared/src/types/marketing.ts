@@ -8,9 +8,10 @@
 /**
  * Canais de divulgação social do Marketing IA — distinto de `MarketplaceChannel`
  * (que é sobre vender/anunciar em marketplaces). TikTok/YouTube Shorts/Pinterest/
- * Google Meu Negócio não são marketplaces. Facebook/Instagram intersectam os dois
- * mundos (também existem em `MarketplaceChannel` para o fluxo de publisher), mas
- * aqui o conjunto é o de canais de CONTEÚDO, não de anúncio de produto.
+ * Google Meu Negócio não são marketplaces. Facebook/Instagram existem em
+ * `MarketplaceChannel`, mas aqui o conjunto é o de canais de CONTEÚDO, não de
+ * anúncio de produto. Instagram permanece no tipo para compatibilidade com
+ * dados antigos, mas a publicação de marketing está desativada no backend.
  */
 export const MarketingChannel = {
   INSTAGRAM: 'instagram',

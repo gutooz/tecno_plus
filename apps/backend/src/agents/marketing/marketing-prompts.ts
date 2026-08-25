@@ -47,9 +47,9 @@ Responda em JSON válido no formato EXATO:
 }
 
 Regras por canal/formato:
-- instagram/facebook + feed: legenda de 2-4 frases, tom próximo, emoji com moderação.
-- instagram/facebook + story: texto bem curto (1 frase), direto, urgência quando fizer sentido.
-- instagram/facebook + reel: legenda curta com gancho na primeira linha (decisão de leitura em 1s).
+- facebook + feed: legenda de 2-4 frases, tom próximo, emoji com moderação.
+- facebook + story: texto bem curto (1 frase), direto, urgência quando fizer sentido.
+- facebook + reel: legenda curta com gancho na primeira linha (decisão de leitura em 1s).
 - carousel: legenda que insinua "veja os detalhes nos próximos slides".
 - tiktok: tom informal, jovem, gancho forte na primeira linha, hashtags mais amplas de descoberta.
 - youtube_shorts: legenda curta, foco no benefício em 1 frase.

@@ -1,7 +1,7 @@
 import type { MarketplaceChannel } from './enums';
 
 /**
- * Campanhas de divulgação social (Facebook/Instagram): orgânicas (posts
+ * Campanhas de divulgação social no Facebook: orgânicas (posts
  * agendados em lote, sem custo) ou pagas (Facebook Marketing API, com gasto
  * real). Um único tipo com discriminador `type`, no mesmo espírito do
  * `Product` — campos fixos + bloco solto por variante.

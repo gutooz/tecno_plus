@@ -5,7 +5,7 @@ import { SocialApprovalService } from './social.service';
 import { ProductDocument } from '../database/schemas/product.schema';
 
 /**
- * Gestão web de posts sociais (Facebook/Instagram) — complementa o fluxo de
+ * Gestão web de posts sociais no Facebook — complementa o fluxo de
  * aprovação por Telegram (não substitui). Dados escopados pelo `ownerId` fixo
  * de config, mesma fonte que `SocialApprovalService` já usa para o pick
  * diário automático (ver comentário lá) — não pelo usuário JWT autenticado,

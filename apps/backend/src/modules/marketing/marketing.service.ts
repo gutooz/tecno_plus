@@ -201,6 +201,7 @@ export class MarketingService {
     channel: MarketingChannel,
     type: MarketingContentType,
   ) {
+    this.ensureMarketingChannelEnabled(channel);
     const product = await this.products.findOne({ _id: productId, ownerId });
     if (!product) throw new NotFoundException('Produto não encontrado.');
 
@@ -472,6 +473,7 @@ export class MarketingService {
       scheduledFor: string;
     },
   ): Promise<{ id: string }> {
+    this.ensureMarketingChannelEnabled(input.channel);
     const product = await this.products.findOne({ _id: input.productId, ownerId }).lean();
     if (!product) throw new NotFoundException('Produto não encontrado.');
 
@@ -533,6 +535,7 @@ export class MarketingService {
     };
     const imageUrl = this.resolveImageUrl(content, product);
     const caption = this.composeCaption(content);
+    this.ensureMarketingChannelEnabled(post.channel as MarketingChannel);
 
     try {
       const result = await this.publisher.publish({
@@ -794,6 +797,12 @@ export class MarketingService {
 
     const imagesAttached = await this.autoAttachImages(ownerId);
     return { analyzed, created, imagesAttached };
+  }
+
+  private ensureMarketingChannelEnabled(channel: MarketingChannel): void {
+    if (channel === MarketingChannel.INSTAGRAM) {
+      throw new BadRequestException('Instagram desativado para marketing.');
+    }
   }
 
   /** Estilos variados de propósito — evita todo post automático sair com a mesma cara. */

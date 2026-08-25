@@ -31,7 +31,7 @@ const TYPE_CYCLE: MarketingContentType[] = [
   MarketingContentType.CAROUSEL,
   MarketingContentType.REEL,
 ];
-const CHANNEL_CYCLE: MarketingChannel[] = [MarketingChannel.INSTAGRAM, MarketingChannel.FACEBOOK];
+const CHANNEL_CYCLE: MarketingChannel[] = [MarketingChannel.FACEBOOK];
 
 /** Temas "de conteúdo" (não-comerciais) — promotional/new_arrival/seasonal vêm do plano, não daqui. */
 const THEME_ROTATION: MarketingTheme[] = [

@@ -115,7 +115,7 @@ export interface ProductImageSet {
 }
 
 /**
- * Rascunho de post social (Facebook/Instagram) aguardando aprovação do dono
+ * Rascunho de post social no Facebook aguardando aprovação do dono
  * via Telegram. Um produto tem no máximo um `socialApproval` ativo por vez —
  * se rejeitado, o próximo ciclo do agendador pode tentar outro produto.
  */

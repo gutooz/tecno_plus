@@ -5,7 +5,7 @@ import { CampaignStatus } from '@tecnoplus/shared';
 export type CampaignDocument = HydratedDocument<Campaign>;
 
 /**
- * Campanha de divulgação social (Facebook/Instagram) — orgânica ou paga (ver
+ * Campanha de divulgação social no Facebook — orgânica ou paga (ver
  * `type`). Os blocos `organic`/`paid` são objetos livres — o formato canônico
  * vive em `@tecnoplus/shared` (`OrganicCampaignConfig`/`PaidCampaignConfig`);
  * aqui o Mongo apenas persiste, igual ao padrão usado em `Product`.

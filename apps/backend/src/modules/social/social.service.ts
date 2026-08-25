@@ -17,6 +17,7 @@ import { TelegramApi, TgInlineKeyboard } from '../telegram/telegram-api';
 const brl = (v: number) => 'R$ ' + v.toFixed(2).replace('.', ',');
 // Limite real da Bot API do Telegram para legenda de foto (message caption is too long acima disso).
 const MAX_CAPTION_LENGTH = 1024;
+const SOCIAL_PUBLISH_CHANNELS = [MarketplaceChannel.FACEBOOK] as const;
 
 function keyboardFor(productId: string): TgInlineKeyboard {
   return {
@@ -31,10 +32,10 @@ function keyboardFor(productId: string): TgInlineKeyboard {
 }
 
 /**
- * Orquestra o rascunho → aprovação → publicação de posts sociais
- * (Facebook + Instagram) de um produto do catálogo, com aprovação humana via
- * Telegram. O `SocialScheduler` chama `sendForApproval` 1x/dia; os botões do
- * Telegram (roteados pelo `TelegramService`) chamam `approve`/`reject`/`setCaption`.
+ * Orquestra o rascunho → aprovação → publicação de posts sociais no Facebook
+ * de um produto do catálogo, com aprovação humana via Telegram. O `SocialScheduler`
+ * chama `sendForApproval` 1x/dia; os botões do Telegram (roteados pelo
+ * `TelegramService`) chamam `approve`/`reject`/`setCaption`.
  */
 @Injectable()
 export class SocialApprovalService {
@@ -107,14 +108,14 @@ export class SocialApprovalService {
 
     const domain = this.toDomain(product);
     const errors: string[] = [];
-    for (const channel of [MarketplaceChannel.FACEBOOK, MarketplaceChannel.INSTAGRAM]) {
+    for (const channel of SOCIAL_PUBLISH_CHANNELS) {
       try {
         await this.publisher.publish(domain, channel);
       } catch (e) {
         errors.push(`${channel}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    if (errors.length === 2) {
+    if (errors.length === SOCIAL_PUBLISH_CHANNELS.length) {
       throw new BadRequestException(`Falha ao publicar: ${errors.join(' | ')}`);
     }
 
@@ -198,7 +199,7 @@ export class SocialApprovalService {
     );
   }
 
-  /** Publica no Facebook + Instagram e fecha o ciclo de aprovação. */
+  /** Publica no Facebook e fecha o ciclo de aprovação. */
   async approve(productId: string): Promise<void> {
     const product = await this.products.findById(productId);
     if (
@@ -209,7 +210,7 @@ export class SocialApprovalService {
     const domain = this.toDomain(product);
 
     const errors: string[] = [];
-    for (const channel of [MarketplaceChannel.FACEBOOK, MarketplaceChannel.INSTAGRAM]) {
+    for (const channel of SOCIAL_PUBLISH_CHANNELS) {
       try {
         await this.publisher.publish(domain, channel);
       } catch (e) {
@@ -217,7 +218,7 @@ export class SocialApprovalService {
       }
     }
 
-    if (errors.length === 2) {
+    if (errors.length === SOCIAL_PUBLISH_CHANNELS.length) {
       this.logger.error(
         `Publicação social de ${product.internalSku} falhou: ${errors.join(' | ')}`,
       );
@@ -235,7 +236,7 @@ export class SocialApprovalService {
       },
     );
     const suffix = errors.length ? `\n⚠️ ${errors.join(' | ')}` : '';
-    await this.closeMessage(product, `✅ Publicado no Facebook e Instagram.${suffix}`);
+    await this.closeMessage(product, `✅ Publicado no Facebook.${suffix}`);
   }
 
   async reject(productId: string): Promise<void> {
