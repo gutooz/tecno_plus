@@ -1,5 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { isValidObjectId, Model } from 'mongoose';
+import { User, UserDocument } from '../database/schemas/user.schema';
 import { UploadsService } from '../uploads/uploads.service';
 import { SocialApprovalService } from '../social/social.service';
 import { DropshippingService } from '../dropshipping/dropshipping.service';
@@ -49,7 +52,8 @@ export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
   private readonly api: TelegramApi | null;
   private readonly allowed: Set<string>;
-  private readonly ownerId: string;
+  private readonly configuredOwnerId: string;
+  private warnedInvalidOwner = false;
   /** Fotos de um mesmo álbum (media_group_id) chegam em mensagens separadas —
    * agrupa só pra mandar UMA confirmação, em vez de spamar uma por foto. */
   private readonly albumReplies = new Map<string, AlbumReplyBuffer>();
@@ -70,11 +74,12 @@ export class TelegramService {
     private readonly uploads: UploadsService,
     private readonly social: SocialApprovalService,
     private readonly dropshipping: DropshippingService,
+    @InjectModel(User.name) private readonly users: Model<UserDocument>,
   ) {
     const token = this.config.get<string>('telegram.botToken') ?? '';
     this.api = token ? new TelegramApi(token) : null;
     this.allowed = new Set(this.config.get<string[]>('telegram.allowedChatIds') ?? []);
-    this.ownerId = this.config.get<string>('telegram.ownerId') ?? 'bras';
+    this.configuredOwnerId = this.config.get<string>('telegram.ownerId')?.trim() ?? '';
   }
 
   async start(): Promise<boolean> {
@@ -271,8 +276,9 @@ export class TelegramService {
       await this.api.sendMessage(chatId, '⏳ Baixando foto e cadastrando produto…');
       const path = await this.api.getFilePath(flow.photo.fileId);
       const buffer = await this.api.download(path);
+      const ownerId = await this.resolveOwnerId();
       const result = await this.uploads.ingestWithData({
-        ownerId: this.ownerId,
+        ownerId,
         buffer,
         mimeType: flow.photo.mimeType,
         name: flow.caption,
@@ -375,8 +381,9 @@ export class TelegramService {
       const path = await this.api.getFilePath(photo.fileId);
       const buffer = await this.api.download(path);
       const ext = photo.mimeType.split('/')[1] ?? 'jpg';
+      const ownerId = await this.resolveOwnerId();
       const result = await this.uploads.ingestAutoProcessed(
-        this.ownerId,
+        ownerId,
         { buffer, originalName: `telegram-${Date.now()}.${ext}`, mimeType: photo.mimeType },
         'telegram',
       );
@@ -434,8 +441,9 @@ export class TelegramService {
       );
 
       const [main, ...references] = files;
+      const ownerId = await this.resolveOwnerId();
       const result = await this.uploads.ingestAutoProcessedWithReferences(
-        this.ownerId,
+        ownerId,
         main,
         references,
         'telegram',
@@ -484,6 +492,38 @@ export class TelegramService {
       void this.api?.sendMessage(chatId, messages.plural(buf.count));
     }, TelegramService.ALBUM_DEBOUNCE_MS);
     this.albumReplies.set(groupId, buf);
+  }
+
+  private async resolveOwnerId(): Promise<string> {
+    const configured = this.configuredOwnerId;
+
+    if (configured && isValidObjectId(configured)) {
+      const configuredUser = await this.users.exists({ _id: configured });
+      if (configuredUser) return configured;
+
+      this.warnInvalidConfiguredOwner(configured);
+    } else if (configured) {
+      this.warnInvalidConfiguredOwner(configured);
+    }
+
+    const admin = await this.users
+      .findOne({ role: 'admin' })
+      .sort({ createdAt: 1 })
+      .select('_id')
+      .lean<{ _id: unknown }>()
+      .exec();
+
+    if (admin?._id) return String(admin._id);
+
+    return configured || 'bras';
+  }
+
+  private warnInvalidConfiguredOwner(ownerId: string): void {
+    if (this.warnedInvalidOwner) return;
+    this.warnedInvalidOwner = true;
+    this.logger.warn(
+      `TELEGRAM_OWNER_ID=${ownerId} não corresponde a um usuário ativo; usando o primeiro admin disponível.`,
+    );
   }
 
   /** Consome o código gerado em "Meus produtos" (área do fornecedor) e vincula
