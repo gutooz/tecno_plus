@@ -23,9 +23,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      SECRET_KEY: ${WPPCONNECT_SECRET_KEY:-}
+      SECRET_KEY: ${WPPCONNECT_SECRET_KEY:-${JWT_SECRET:?JWT_SECRET deve ser configurado}}
       PORT: 21465
-      WEBHOOK_URL: ${WPPCONNECT_WEBHOOK_URL:-}
+      WEBHOOK_URL: ${WPPCONNECT_WEBHOOK_URL:-${PUBLIC_APP_URL}/api/whatsapp/webhook}
       START_ALL_SESSIONS: 'true'
       TOKEN_STORE_TYPE: file
       CUSTOM_USER_DATA_DIR: /usr/src/wpp-server/userDataDir
@@ -60,6 +60,10 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
       SHOPEE_REDIRECT_URL: ${SHOPEE_REDIRECT_URL}
       WPPCONNECT_BASE_URL: ${WPPCONNECT_BASE_URL:-http://wppconnect:21465}
+      WPPCONNECT_SESSION: ${WPPCONNECT_SESSION:-tecnoplus}
+      WPPCONNECT_SECRET_KEY: ${WPPCONNECT_SECRET_KEY:-${JWT_SECRET:?JWT_SECRET deve ser configurado}}
+      WPPCONNECT_WEBHOOK_URL: ${WPPCONNECT_WEBHOOK_URL:-${PUBLIC_APP_URL}/api/whatsapp/webhook}
+      WPPCONNECT_PRODUCT_LINK_BASE_URL: ${WPPCONNECT_PRODUCT_LINK_BASE_URL:-${PUBLIC_APP_URL}}
     volumes:
       - ./apps/backend/local-templates:/app/apps/backend/local-templates:ro
     expose:
