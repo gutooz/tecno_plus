@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto, RegisterDto } from './dto';
+import { LoginDto, RefreshDto, RegisterDto, RegistrationPaymentStatusDto } from './dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -12,6 +12,12 @@ export class AuthController {
   @ApiOperation({ summary: 'Cria um usuário e retorna tokens' })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto.email, dto.password, dto.name);
+  }
+
+  @Post('register/payment-status')
+  @ApiOperation({ summary: 'Confirma pagamento do cadastro no Mercado Pago' })
+  registrationPaymentStatus(@Body() dto: RegistrationPaymentStatusDto) {
+    return this.auth.confirmRegistrationPayment(dto.email, dto.password, dto.paymentId);
   }
 
   @Post('login')

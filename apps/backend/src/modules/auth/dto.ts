@@ -1,7 +1,13 @@
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+
+const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
+const normalizeEmail = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
 
 export class RegisterDto {
   @IsEmail()
+  @Transform(normalizeEmail)
   email!: string;
 
   @IsString()
@@ -10,6 +16,8 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  @Transform(trim)
   name?: string;
 
   @IsOptional()
@@ -18,6 +26,7 @@ export class RegisterDto {
 
 export class LoginDto {
   @IsEmail()
+  @Transform(normalizeEmail)
   email!: string;
 
   @IsString()
@@ -27,4 +36,18 @@ export class LoginDto {
 export class RefreshDto {
   @IsString()
   refreshToken!: string;
+}
+
+export class RegistrationPaymentStatusDto {
+  @IsEmail()
+  @Transform(normalizeEmail)
+  email!: string;
+
+  @IsString()
+  password!: string;
+
+  @IsString()
+  @MaxLength(100)
+  @Transform(trim)
+  paymentId!: string;
 }

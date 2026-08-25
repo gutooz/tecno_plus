@@ -24,9 +24,12 @@ export function Hero() {
             produtos, publicar em marketplaces, receber pedidos e organizar toda a operação de
             dropshipping.
           </p>
+          <p className="mt-4 inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+            Cadastro agora por R$ 20 para qualquer pessoa.
+          </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <LinkButton href="/login?mode=register" size="lg">
-              Começar agora
+              Começar agora por R$ 20
               <ArrowRight size={16} />
             </LinkButton>
             <LinkButton href="#como-funciona" variant="outline" size="lg">

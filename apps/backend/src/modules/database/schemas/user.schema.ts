@@ -22,6 +22,22 @@ export class User {
 
   @Prop({ type: [String], default: [] })
   refreshTokenHashes!: string[];
+
+  @Prop({
+    default: 'approved',
+    enum: ['pending', 'approved', 'rejected', 'cancelled'],
+    index: true,
+  })
+  signupPaymentStatus!: string;
+
+  @Prop({ default: '', index: true })
+  signupPaymentId!: string;
+
+  @Prop({ default: 0 })
+  signupPaymentAmount!: number;
+
+  @Prop({ default: '' })
+  signupPaymentExternalReference!: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

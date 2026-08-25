@@ -52,7 +52,7 @@ export function SiteHeader() {
             Entrar
           </LinkButton>
           <LinkButton href="/login?mode=register" size="sm">
-            Criar conta
+            Criar conta R$ 20
           </LinkButton>
         </div>
 
@@ -86,7 +86,7 @@ export function SiteHeader() {
               Entrar
             </LinkButton>
             <LinkButton href="/login?mode=register" className="w-full">
-              Criar conta
+              Criar conta R$ 20
             </LinkButton>
           </div>
         </nav>

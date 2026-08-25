@@ -4,7 +4,20 @@ import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, Eye, EyeOff, Lock, Mail, Sparkles, Store, Zap } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Copy,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  QrCode,
+  RefreshCcw,
+  Sparkles,
+  Store,
+  Zap,
+} from 'lucide-react';
 import {
   api,
   getToken,
@@ -16,6 +29,27 @@ import {
 import { Button, Checkbox, Input } from '@/components/ui';
 
 type Mode = 'login' | 'register';
+
+type AuthSuccessResponse = {
+  accessToken: string;
+  refreshToken: string;
+  user: SessionUser;
+  paymentRequired?: false;
+};
+
+type SignupPaymentResponse = {
+  paymentRequired: true;
+  amount: number;
+  status: string;
+  paymentId: string;
+  pix?: {
+    encodedImage?: string;
+    payload?: string;
+    ticketUrl?: string;
+  };
+};
+
+type AuthResponse = AuthSuccessResponse | SignupPaymentResponse;
 
 const HIGHLIGHTS = [
   { icon: Zap, value: '10x mais rápido', label: 'Do upload à publicação' },
@@ -43,7 +77,10 @@ function LoginForm() {
   const [remember, setRemember] = useState(true);
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   const [error, setError] = useState('');
+  const [paymentNotice, setPaymentNotice] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const [signupPayment, setSignupPayment] = useState<SignupPaymentResponse | null>(null);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const passwordValid = password.length >= 8;
@@ -59,17 +96,19 @@ function LoginForm() {
 
     setLoading(true);
     setError('');
+    setPaymentNotice('');
     try {
-      const res = await api.post<{
-        accessToken: string;
-        refreshToken: string;
-        user: SessionUser;
-      }>(`/auth/${mode}`, {
+      const res = await api.post<AuthResponse>(`/auth/${mode}`, {
         email,
         name,
         password,
         profileType: mode === 'register' ? 'seller' : undefined,
       });
+      if (res.paymentRequired) {
+        setSignupPayment(res);
+        setPaymentNotice('Pix Mercado Pago gerado. Pague R$ 20 para liberar sua conta.');
+        return;
+      }
       setToken(res.accessToken, remember);
       setRefreshToken(res.refreshToken, remember);
       setSessionUser(res.user, remember);
@@ -84,7 +123,43 @@ function LoginForm() {
   function toggleMode() {
     setMode((m) => (m === 'login' ? 'register' : 'login'));
     setError('');
+    setPaymentNotice('');
+    setSignupPayment(null);
     setTouched({});
+  }
+
+  async function verifySignupPayment() {
+    if (!signupPayment) return;
+    setCheckingPayment(true);
+    setError('');
+    setPaymentNotice('');
+    try {
+      const res = await api.post<AuthResponse>('/auth/register/payment-status', {
+        email,
+        password,
+        paymentId: signupPayment.paymentId,
+      });
+      if (res.paymentRequired) {
+        setSignupPayment((current) => (current ? { ...current, status: res.status } : res));
+        setPaymentNotice('Ainda aguardando confirmação do Mercado Pago.');
+        return;
+      }
+      setToken(res.accessToken, remember);
+      setRefreshToken(res.refreshToken, remember);
+      setSessionUser(res.user, remember);
+      router.push(res.user.role === 'supplier' ? '/supplier' : '/seller');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao verificar pagamento');
+    } finally {
+      setCheckingPayment(false);
+    }
+  }
+
+  async function copyPixPayload() {
+    const payload = signupPayment?.pix?.payload;
+    if (!payload) return;
+    await navigator.clipboard.writeText(payload);
+    setPaymentNotice('Código Pix copiado.');
   }
 
   return (
@@ -190,17 +265,72 @@ function LoginForm() {
                 {mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
               </h1>
               <p className="mt-1 text-sm text-muted">
-                {mode === 'login' ? 'Entre para continuar' : 'Comece a catalogar em minutos'}
+                {mode === 'login'
+                  ? 'Entre para continuar'
+                  : 'Pague R$ 20 via Mercado Pago para ativar'}
               </p>
             </div>
           </div>
+
+          {signupPayment && (
+            <div className="mb-5 rounded-2xl border border-border bg-surface-2/60 p-3">
+              <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+                {signupPayment.pix?.encodedImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`data:image/png;base64,${signupPayment.pix.encodedImage}`}
+                    alt="QR Code Pix Mercado Pago"
+                    className="h-28 w-28 rounded-xl bg-white object-contain p-1"
+                  />
+                ) : (
+                  <div className="flex h-28 w-28 items-center justify-center rounded-xl bg-surface">
+                    <QrCode size={28} className="text-muted" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">Cadastro R$ 20</p>
+                    <span className="inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-semibold text-warning">
+                      {signupPayment.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    Pague com Pix pelo Mercado Pago e clique em verificar para entrar.
+                  </p>
+                  {signupPayment.pix?.payload && (
+                    <p className="mt-2 line-clamp-2 break-all text-xs text-muted">
+                      {signupPayment.pix.payload}
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {signupPayment.pix?.payload && (
+                      <Button type="button" size="sm" variant="outline" onClick={copyPixPayload}>
+                        <Copy size={14} />
+                        Copiar Pix
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      loading={checkingPayment}
+                      onClick={verifySignupPayment}
+                    >
+                      <RefreshCcw size={14} />
+                      Verificar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={submit} noValidate className="flex flex-col gap-4">
             {mode === 'register' && (
               <div className="grid gap-2">
                 <div className="flex items-center gap-3 rounded-xl border border-primary bg-primary/10 px-3 py-2.5 text-left text-sm text-primary">
                   <Store size={16} />
-                  Cadastro como vendedor
+                  Cadastro como vendedor por R$ 20
                 </div>
                 <Input
                   id="name"
@@ -274,6 +404,17 @@ function LoginForm() {
             )}
 
             <AnimatePresence initial={false}>
+              {paymentNotice && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex items-center gap-2 overflow-hidden rounded-xl bg-success/10 px-3 py-2 text-sm text-success"
+                >
+                  <CheckCircle2 size={15} className="shrink-0" />
+                  {paymentNotice}
+                </motion.div>
+              )}
               {error && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
@@ -288,7 +429,7 @@ function LoginForm() {
             </AnimatePresence>
 
             <Button type="submit" size="lg" loading={loading} className="mt-1 w-full">
-              {loading ? 'Entrando…' : mode === 'login' ? 'Entrar' : 'Cadastrar'}
+              {loading ? 'Entrando…' : mode === 'login' ? 'Entrar' : 'Gerar Pix Mercado Pago'}
             </Button>
           </form>
 
