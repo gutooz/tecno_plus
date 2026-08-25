@@ -24,15 +24,20 @@ export interface IngestWithData {
   source?: string;
 }
 
+interface PendingProductData {
+  name?: string;
+  purchasePrice?: number;
+  weight?: number;
+}
+
 export type IngestResult =
   | { duplicate: true; existing: { id: string; internalSku: string; name: string } }
   | { duplicate: false; id: string; internalSku: string; status: string };
 
 /**
  * Recebe uma imagem, sobe no Storage IMEDIATAMENTE, cria o produto e enfileira
- * o pipeline. `ingest` é o caminho do upload web (título preenchido depois);
- * `ingestWithData` é o caminho do Telegram (já vem com título + preço) e aplica
- * deduplicação (mesmo título OU mesma imagem = produto repetido).
+ * o pipeline quando pedido. `ingest` é o caminho do upload web e do Telegram
+ * pendente; `ingestWithData` é o caminho legado com título + preço e deduplicação.
  */
 @Injectable()
 export class UploadsService {
@@ -48,16 +53,28 @@ export class UploadsService {
     return createHash('sha256').update(buffer).digest('hex');
   }
 
-  /** Upload web (ou Telegram sem legenda): cria produto (título preenchido
-   * depois no Envio em Lote) e opcionalmente enfileira. */
-  async ingest(ownerId: string, file: UploadedImage, startPipeline = true, source = 'web') {
+  /** Upload web ou Telegram: cria produto aguardando cadastro e opcionalmente enfileira. */
+  async ingest(
+    ownerId: string,
+    file: UploadedImage,
+    startPipeline = true,
+    source = 'web',
+    data: PendingProductData = {},
+  ) {
+    const name = data.name?.trim() ?? '';
     const imageHash = this.sha256(file.buffer);
     const created = await this.products.create({
       ownerId,
       internalSku: buildInternalSku(undefined, `${Date.now()}${Math.round(Math.random() * 1e6)}`),
       status: ProductStatus.UPLOADED,
       images: {},
-      vision: {},
+      vision: {
+        ...(name ? { name } : {}),
+        ...(data.purchasePrice != null ? { labelPrice: data.purchasePrice } : {}),
+        ...(data.weight != null ? { weight: data.weight, weightSource: 'etiqueta' } : {}),
+      },
+      ...(data.purchasePrice != null ? { pricing: { purchasePrice: data.purchasePrice } } : {}),
+      ...(name ? { nameKey: slugify(name) } : {}),
       imageHash,
       source,
     });
@@ -80,7 +97,7 @@ export class UploadsService {
   }
 
   /**
-   * Caminho do Telegram em lote com IA automática: bloqueia a mesma imagem
+   * Caminho automático legado: bloqueia a mesma imagem
    * repetida, cria o produto já visível como PROCESSING e dispara o pipeline
    * para visão, conteúdo, imagens de IA e preço sugerido.
    */

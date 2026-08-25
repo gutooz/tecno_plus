@@ -1,11 +1,11 @@
 import { ProductStatus } from '@tecnoplus/shared';
 import { UploadsService } from './uploads.service';
 
-function makeService(duplicate: unknown = null) {
+function makeService(duplicate: unknown = null, status: ProductStatus = ProductStatus.PROCESSING) {
   const savedDoc = {
     _id: 'product-1',
     internalSku: 'SKU-1',
-    status: ProductStatus.PROCESSING,
+    status,
     set: jest.fn(),
     save: jest.fn().mockResolvedValue(undefined),
   };
@@ -113,6 +113,60 @@ describe('UploadsService.ingestAutoProcessed', () => {
     expect(savedDoc.set).toHaveBeenCalledWith('images', {
       original: 'https://cdn.test/original.jpg',
       references: ['https://cdn.test/original.jpg'],
+    });
+  });
+});
+
+describe('UploadsService.ingest', () => {
+  const file = {
+    buffer: Buffer.from('same image'),
+    originalName: 'foto.jpg',
+    mimeType: 'image/jpeg',
+  };
+
+  it('salva pendente do Telegram mesmo com imagem repetida e não dispara a IA', async () => {
+    const { service, model, storage, queue } = makeService(
+      {
+        _id: 'existing-1',
+        internalSku: 'SKU-OLD',
+        vision: { name: 'Cabo USB-C' },
+      },
+      ProductStatus.UPLOADED,
+    );
+
+    const result = await service.ingest('owner-1', file, false, 'telegram', {
+      name: 'Cabo USB-C',
+      purchasePrice: 12.5,
+      weight: 0.2,
+    });
+
+    expect(model.findOne).not.toHaveBeenCalled();
+    expect(model.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerId: 'owner-1',
+        status: ProductStatus.UPLOADED,
+        source: 'telegram',
+        vision: {
+          name: 'Cabo USB-C',
+          labelPrice: 12.5,
+          weight: 0.2,
+          weightSource: 'etiqueta',
+        },
+        pricing: { purchasePrice: 12.5 },
+        nameKey: 'cabo-usb-c',
+        imageHash: expect.any(String),
+      }),
+    );
+    expect(storage.upload).toHaveBeenCalledWith(
+      'products/product-1/original.jpeg',
+      file.buffer,
+      'image/jpeg',
+    );
+    expect(queue.startPipeline).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      id: 'product-1',
+      internalSku: 'SKU-1',
+      status: ProductStatus.UPLOADED,
     });
   });
 });
